@@ -128,7 +128,7 @@ const versionInput = (v: Version) => ({
   branchId: v.branchId,
   metadata:
     v.metadata == null
-      ? Prisma.JsonNull
+      ? undefined
       : (v.metadata as Prisma.InputJsonValue),
 });
 

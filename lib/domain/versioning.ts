@@ -8,7 +8,7 @@ import type {
   VersionCreatedBy,
   VersionMetadata,
 } from "./types";
-import { projectSchema, versionSchema, branchSchema, chapterSchema } from "./types";
+import { projectSchema, versionSchema, chapterSchema } from "./types";
 
 function nowIso(): string {
   return new Date().toISOString();

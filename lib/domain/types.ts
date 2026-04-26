@@ -80,3 +80,5 @@ export const projectFileSchema = z.object({
   compareVersionB: z.string().uuid().nullable().optional(),
 });
 export type ProjectFile = z.infer<typeof projectFileSchema>;
+/** Entrada antes de `default` (p. ej. en localStorage antiguo sin `viewMode`). */
+export type ProjectFileInput = z.input<typeof projectFileSchema>;
