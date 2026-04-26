@@ -14,8 +14,20 @@ import type { Fragment, Version } from "@/lib/domain/types";
 import {
   getDefaultProjectState,
   localProjectStore,
+  projectStateFromRemoteProject,
   type ProjectState,
 } from "@/lib/storage/projectStore";
+import {
+  clearStoredRemoteProjectId,
+  getDefaultRemoteProjectIdFromEnv,
+  getStoredRemoteProjectId,
+  setStoredRemoteProjectId,
+} from "@/lib/storage/remoteProjectId";
+import {
+  createProjectOnServer,
+  fetchProjectFromServer,
+  putProjectToServer,
+} from "@/lib/storage/serverProjectClient";
 
 function formatVersionLabel(v: Version, index: number): string {
   const t = new Date(v.createdAt);
@@ -23,11 +35,19 @@ function formatVersionLabel(v: Version, index: number): string {
   return `#${index + 1} · ${v.createdBy} · ${time}`;
 }
 
+const SYNC_DEBOUNCE_MS = 1500;
+
 export function ChapterEditor() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [state, setState] = useState<ProjectState>(getDefaultProjectState);
   const [fragment, setFragment] = useState<Fragment | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [remoteProjectId, setRemoteProjectId] = useState<string | null>(null);
+  const [remoteLoading, setRemoteLoading] = useState(false);
+  const [remoteError, setRemoteError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const lastPushedRef = useRef<string>("");
 
   useEffect(() => {
     const fromStorage = localProjectStore.load();
@@ -40,8 +60,126 @@ export function ChapterEditor() {
 
   useEffect(() => {
     if (!hydrated) return;
+    let cancelled = false;
+    (async () => {
+      setRemoteLoading(true);
+      setRemoteError(null);
+      const envId = getDefaultRemoteProjectIdFromEnv();
+      const storedId = getStoredRemoteProjectId();
+      let id: string | null = envId ?? storedId;
+
+      if (id) {
+        setRemoteProjectId(id);
+        try {
+          const p = await fetchProjectFromServer(id);
+          if (cancelled) return;
+          setState(projectStateFromRemoteProject(p));
+          setStoredRemoteProjectId(p.id);
+          setRemoteProjectId(p.id);
+          lastPushedRef.current = JSON.stringify(p);
+        } catch (e) {
+          if (cancelled) return;
+          const msg = e instanceof Error ? e.message : "Error al cargar";
+          if (msg.includes("no encontr") || msg.includes("404")) {
+            clearStoredRemoteProjectId();
+            id = null;
+            setRemoteProjectId(null);
+          } else {
+            setRemoteError(msg);
+            setRemoteLoading(false);
+            return;
+          }
+        }
+      }
+
+      if (!id && !cancelled) {
+        try {
+          const local = localProjectStore.load();
+          if (local) {
+            const newId = await createProjectOnServer(local.project);
+            if (cancelled) return;
+            setStoredRemoteProjectId(newId);
+            setRemoteProjectId(newId);
+            if (newId === local.project.id) {
+              setState(local);
+              lastPushedRef.current = JSON.stringify(local.project);
+            } else {
+              const p = await fetchProjectFromServer(newId);
+              if (cancelled) return;
+              setState(projectStateFromRemoteProject(p));
+              lastPushedRef.current = JSON.stringify(p);
+            }
+          } else {
+            const newId = await createProjectOnServer();
+            if (cancelled) return;
+            setStoredRemoteProjectId(newId);
+            setRemoteProjectId(newId);
+            const p = await fetchProjectFromServer(newId);
+            if (cancelled) return;
+            setState(projectStateFromRemoteProject(p));
+            lastPushedRef.current = JSON.stringify(p);
+          }
+        } catch (e) {
+          if (cancelled) return;
+          setRemoteError(
+            e instanceof Error ? e.message : "Error con el servidor"
+          );
+        }
+      }
+
+      if (!cancelled) setRemoteLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
     localProjectStore.save(state);
   }, [state, hydrated]);
+
+  useEffect(() => {
+    if (!remoteProjectId || !hydrated || remoteLoading) return;
+    const s = JSON.stringify(state.project);
+    if (s === lastPushedRef.current) return;
+    const t = window.setTimeout(() => {
+      (async () => {
+        setSyncing(true);
+        setSyncError(null);
+        try {
+          await putProjectToServer(remoteProjectId, state.project);
+          lastPushedRef.current = s;
+        } catch (e) {
+          setSyncError(
+            e instanceof Error ? e.message : "Error al guardar en servidor"
+          );
+        } finally {
+          setSyncing(false);
+        }
+      })();
+    }, SYNC_DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+  }, [state.project, remoteProjectId, hydrated, remoteLoading]);
+
+  const onSync = async () => {
+    if (!remoteProjectId) {
+      setSyncError("Aún no hay proyecto en el servidor");
+      return;
+    }
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      await putProjectToServer(remoteProjectId, state.project);
+      lastPushedRef.current = JSON.stringify(state.project);
+    } catch (e) {
+      setSyncError(
+        e instanceof Error ? e.message : "Error al guardar en servidor"
+      );
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const activeChapter = findChapter(state.project, state.activeChapterId);
   const versions = activeChapter?.versions ?? [];
@@ -110,15 +248,35 @@ export function ChapterEditor() {
   const onResetLocal = () => {
     if (
       !confirm(
-        "Borrar el borrador guardado en el navegador y empezar de nuevo?"
+        "Borrar el borrador en el navegador, desvincular el id remoto y crear un proyecto nuevo en el servidor?"
       )
     ) {
       return;
     }
     localProjectStore.clear();
-    const fresh = getDefaultProjectState();
-    setState(fresh);
+    clearStoredRemoteProjectId();
     setFragment(null);
+    setRemoteError(null);
+    setSyncError(null);
+    (async () => {
+      setRemoteLoading(true);
+      try {
+        const newId = await createProjectOnServer();
+        setStoredRemoteProjectId(newId);
+        setRemoteProjectId(newId);
+        const p = await fetchProjectFromServer(newId);
+        setState(projectStateFromRemoteProject(p));
+        lastPushedRef.current = JSON.stringify(p);
+      } catch (e) {
+        setRemoteError(
+          e instanceof Error ? e.message : "Error al reiniciar en servidor"
+        );
+        setState(getDefaultProjectState());
+        setRemoteProjectId(null);
+      } finally {
+        setRemoteLoading(false);
+      }
+    })();
   };
 
   if (!activeChapter) {
@@ -127,10 +285,30 @@ export function ChapterEditor() {
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 p-4">
+      {remoteError ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+          Servidor: {remoteError} (puedes seguir con el borrador local.)
+        </p>
+      ) : null}
+      {syncError ? (
+        <p className="rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+          Sincronización: {syncError}
+        </p>
+      ) : null}
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 pb-3 dark:border-zinc-800">
-        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-          {state.project.name}
-        </h1>
+        <div>
+          <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+            {state.project.name}
+          </h1>
+          <p className="text-xs text-zinc-500">
+            {remoteLoading
+              ? "Conectando con el servidor…"
+              : remoteProjectId
+                ? `Proyecto en servidor: ${remoteProjectId.slice(0, 8)}…`
+                : "Sin conexión al servidor"}
+            {syncing ? " · Guardando en servidor…" : ""}
+          </p>
+        </div>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -141,7 +319,16 @@ export function ChapterEditor() {
           </button>
           <button
             type="button"
+            onClick={onSync}
+            disabled={!remoteProjectId || syncing}
+            className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-800 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200"
+          >
+            Sincronizar ahora
+          </button>
+          <button
+            type="button"
             onClick={onResetLocal}
+            disabled={remoteLoading}
             className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-600 dark:text-zinc-300"
           >
             Reiniciar

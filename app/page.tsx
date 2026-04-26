@@ -1,9 +1,9 @@
-import { ChapterEditor } from "./_components/ChapterEditor";
+import { WorkspaceHome } from "./_components/chapterforge/WorkspaceHome";
 
 export default function Home() {
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-      <ChapterEditor />
+    <div className="flex min-h-dvh flex-1 flex-col">
+      <WorkspaceHome />
     </div>
   );
 }

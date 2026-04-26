@@ -1,26 +1,38 @@
 @import "tailwindcss";
 
+/* ChapterForge design tokens (dark-first) */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --cf-bg: #0b0f14;
+  --cf-surface: #111823;
+  --cf-surface-hover: #162033;
+  --cf-primary: #7c5cff;
+  --cf-primary-soft: rgba(124, 92, 255, 0.15);
+  --cf-text-primary: #e6eaf2;
+  --cf-text-secondary: #9aa4b2;
+  --cf-border: rgba(255, 255, 255, 0.08);
+  --cf-success: #2dd4bf;
+  --cf-warning: #fbbf24;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --color-cf-bg: var(--cf-bg);
+  --color-cf-surface: var(--cf-surface);
+  --color-cf-surface-hover: var(--cf-surface-hover);
+  --color-cf-primary: var(--cf-primary);
+  --color-cf-primary-soft: var(--cf-primary-soft);
+  --color-cf-text: var(--cf-text-primary);
+  --color-cf-text-muted: var(--cf-text-secondary);
+  --color-cf-border: var(--cf-border);
+  --color-cf-success: var(--cf-success);
+  --color-cf-warning: var(--cf-warning);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  body {
+    @apply min-h-dvh antialiased;
+    background: var(--cf-bg);
+    color: var(--cf-text-primary);
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }

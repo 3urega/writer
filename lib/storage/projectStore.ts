@@ -1,4 +1,4 @@
-import { projectFileSchema, type ProjectFile } from "../domain/types";
+import { projectFileSchema, type Project, type ProjectFile } from "../domain/types";
 import { createInitialProject } from "../domain/versioning";
 
 const STORAGE_KEY = "ai-writer:project";
@@ -30,6 +30,27 @@ export function getDefaultProjectState(): ProjectState {
     project: init.project,
     activeChapterId: init.activeChapterId,
     activeVersionId: init.activeVersionId,
+  });
+}
+
+/**
+ * Estado a partir de un `Project` cargado del servidor: primer capítulo por `order`
+ * y última versión por `createdAt` como activa.
+ */
+export function projectStateFromRemoteProject(project: Project): ProjectState {
+  const chapters = [...project.chapters].sort((a, b) => a.order - b.order);
+  const ch = chapters[0];
+  if (!ch) {
+    return getDefaultProjectState();
+  }
+  const versions = [...ch.versions].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+  const last = versions[versions.length - 1] ?? ch.versions[0];
+  return createStateFromFile({
+    project,
+    activeChapterId: ch.id,
+    activeVersionId: last.id,
   });
 }
 
