@@ -2,13 +2,23 @@
 
 ```bash
 npm run dev
+npm run build          # prisma generate && next build
+npm run lint
+npm run db:generate    # prisma generate
+npm run db:push        # prisma db push (dev; requiere DATABASE_URL)
 ```
 
 # Architecture
 
-- Next.js, Onion Architecture, DDD.
-- Frontend in `src/app/`, API routes in `src/app/api/`.
-- Backend in `src/contexts/`.
+- **Stack:** Next.js 16, React 19, TypeScript, Tailwind.
+- **Objetivo de producto:** asistente de escritura con versionado por snapshot y fragmentos; ver [domain.md](domain.md).
+- **Estructura actual (MVP):**
+  - UI y rutas en `app/` (no hay `src/app/` aún); componentes p. ej. `app/_components/`.
+  - Dominio y tipos en `lib/domain/`.
+  - Persistencia MVP en cliente: `lib/storage/projectStore.ts` (`localStorage`) + interfaz `ProjectStore`.
+  - Postgres/Prisma (servidor, rutas o acciones en el futuro): `prisma/`, `lib/db/prisma.ts`, `lib/storage/postgresProjectStore.ts`. Cliente generado en `lib/generated/prisma` (ignorado en git; se regenera con `postinstall` / `db:generate`).
+- **A medio plazo (documentado en [docs/](docs/)):** alinear con Onion/DDD: mover a `src/app/`, `src/app/api/`, y `src/contexts/` con casos de uso; ver [docs/backend/hexagonal-architecture.md](docs/backend/hexagonal-architecture.md).
+- **Variables de entorno:** conexión en `DATABASE_URL` (ver `.env.example`); no commitear secretos.
 
 # Documentation
 
