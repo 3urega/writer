@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Evita empaquetar `pdf-parse`: su index ejecuta un bloque de test si `module.parent` queda undefined.
+  serverExternalPackages: ["pdf-parse"],
 };
 
 export default nextConfig;

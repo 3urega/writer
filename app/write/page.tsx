@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ChapterEditor } from "../_components/ChapterEditor";
+
+import { WriteEditorClient } from "./WriteEditorClient";
 
 export default function WritePage() {
   return (
@@ -12,7 +13,7 @@ export default function WritePage() {
           Back to workspace
         </Link>
       </header>
-      <ChapterEditor />
+      <WriteEditorClient />
     </div>
   );
 }

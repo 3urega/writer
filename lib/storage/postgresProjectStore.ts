@@ -81,6 +81,22 @@ function mapRowToProject(p: ProjectWithGraph): Project {
   };
 }
 
+/** Evita dos `saveProjectToPostgres` concurrentes para el mismo id (bloqueos y timeouts). */
+const projectSaveTail = new Map<string, Promise<void>>();
+
+function runSaveSerialized<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = projectSaveTail.get(projectId) ?? Promise.resolve();
+  const run = prev.then(() => fn());
+  projectSaveTail.set(
+    projectId,
+    run.then(
+      () => undefined,
+      () => undefined
+    )
+  );
+  return run;
+}
+
 const projectInclude = {
   chapters: {
     include: {
@@ -152,28 +168,51 @@ const chapterInput = (ch: Chapter) => ({
 /**
  * Sustituye en bloque un proyecto: borra y vuelve a crear el `Project` y su grafo
  * (transaccional). Adecuado para alinear con el JSON del dominio.
+ *
+ * Usa `$transaction([...])` (batch) en lugar de callback interactivo: con
+ * Prisma Accelerate / pools el modo interactivo retiene conexión entre awaits
+ * y puede agotar `maxWait` (~20s) o fallar con 500.
  */
 export async function saveProjectToPostgres(project: Project): Promise<void> {
   const normalized = normalizeProject(project);
-  await getPrismaClient().$transaction(async (tx) => {
-    const existing = await tx.project.findUnique({ where: { id: normalized.id } });
-    if (existing) {
-      await tx.project.delete({ where: { id: normalized.id } });
-    }
-    await tx.project.create({
+  return runSaveSerialized(normalized.id, () => saveProjectToPostgresCore(normalized));
+}
+
+async function saveProjectToPostgresCore(normalized: Project): Promise<void> {
+  const prisma = getPrismaClient();
+  /**
+   * Sin `findUnique` previo: evita una ronda de red y el timeout aislado
+   * ("Operation has timed out") bajo carga. `deleteMany` con el mismo `id` borra
+   * 0 o 1 fila y, por cascada, el grafo existente (incl. knowledge_documents/chunks;
+   * puede ser costoso con muchos PDF indexados).
+   */
+  const steps: Prisma.PrismaPromise<unknown>[] = [
+    // Misma transacción: evita que `statement_timeout` del servidor corte un CASCADE largo
+    prisma.$executeRaw`SELECT set_config('statement_timeout', '5min', true)`,
+    prisma.project.deleteMany({ where: { id: normalized.id } }),
+  ];
+  steps.push(
+    prisma.project.create({
       data: {
         id: normalized.id,
         name: normalized.name,
         chapters: { create: normalized.chapters.map(chapterInput) },
       },
-    });
-    for (const ch of normalized.chapters) {
-      if (ch.mainVersionId) {
-        await tx.chapter.update({
+    })
+  );
+  for (const ch of normalized.chapters) {
+    if (ch.mainVersionId) {
+      steps.push(
+        prisma.chapter.update({
           where: { id: ch.id },
           data: { mainVersionId: ch.mainVersionId },
-        });
-      }
+        })
+      );
     }
+  }
+
+  await prisma.$transaction(steps, {
+    maxWait: 60_000,
+    timeout: 300_000,
   });
 }

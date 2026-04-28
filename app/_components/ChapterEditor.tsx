@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { KnowledgeLibrary } from "@/app/_components/KnowledgeLibrary";
 import { VersionDiffView } from "@/app/_components/editor/VersionDiffView";
 import { splitIntoBlocks } from "@/lib/domain/blocks";
 import type { Version } from "@/lib/domain/types";
@@ -38,10 +39,25 @@ import {
   putProjectToServer,
 } from "@/lib/storage/serverProjectClient";
 
+/** Fecha estable entre SSR y cliente: locale y zona fijos (evita hydration mismatch). */
+function formatVersionTimestamp(iso: string): string {
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return "?";
+  return t.toLocaleString("es-ES", {
+    timeZone: "UTC",
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
 function formatVersionLabel(v: Version, index: number, isMain: boolean): string {
-  const t = new Date(v.createdAt);
-  const time = Number.isNaN(t.getTime()) ? "?" : t.toLocaleString();
-  return `${isMain ? "◆ " : ""}#${index + 1} · ${v.createdBy} · ${time}`;
+  const time = formatVersionTimestamp(v.createdAt);
+  return `${isMain ? "◆ " : ""}#${index + 1} · ${v.createdBy} · ${time} UTC`;
 }
 
 const SYNC_DEBOUNCE_MS = 1500;
@@ -874,6 +890,8 @@ export function ChapterEditor() {
           Añade un salto de doble línea en el texto para ver bloques.
         </p>
       ) : null}
+
+      <KnowledgeLibrary projectId={remoteProjectId} />
 
       <nav className="fixed bottom-0 left-0 right-0 z-20 flex border-t border-zinc-200 bg-zinc-50/95 p-1 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95 lg:hidden">
         {(

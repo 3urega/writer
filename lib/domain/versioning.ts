@@ -23,6 +23,8 @@ export function createVersionSnapshot(input: {
   createdBy: VersionCreatedBy;
   branchId?: string | null;
   metadata?: VersionMetadata | null;
+  /** Si se omite, se usa el instante actual (misma carga, mismo `t` = menos desfase de segundo al agrupar con ramas). */
+  createdAt?: string;
 }): Version {
   return {
     id: uuidv4(),
@@ -31,7 +33,7 @@ export function createVersionSnapshot(input: {
     branchId: input.branchId ?? null,
     metadata: input.metadata ?? null,
     createdBy: input.createdBy,
-    createdAt: nowIso(),
+    createdAt: input.createdAt ?? nowIso(),
   };
 }
 
@@ -74,6 +76,7 @@ export function createInitialProject(name: string): {
     parentVersionId: null,
     createdBy: "user",
     branchId: mainBranchId,
+    createdAt: t,
   });
 
   const chapter: Chapter = {
