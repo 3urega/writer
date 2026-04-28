@@ -41,7 +41,7 @@ Si la tarea implica más de una área (p. ej. endpoint + modelo Prisma), se leen
 | Casos de uso, capas aplicación/dominio, bounded context | [`backend/hexagonal-architecture.md`](docs/backend/hexagonal-architecture.md) |
 | Contenedor DI, `@Service()`, wiring | [`backend/dependency-injection-diod.md`](docs/backend/dependency-injection-diod.md) |
 | Modelo Prisma / tablas / columnas | [`database/table-naming-singular-plural-convention.md`](docs/database/table-naming-singular-plural-convention.md), [`database/text-over-varchar-char-convention.md`](docs/database/text-over-varchar-char-convention.md), [`database/not-null-fields.md`](docs/database/not-null-fields.md) |
-| Pipeline RAG / conocimiento | [`ai/knowledge-rag-pipeline.md`](docs/ai/knowledge-rag-pipeline.md) + enlaces ahí a backend |
+| Pipeline RAG / conocimiento / agente (Fase 1–2 HTTP) | [`ai/knowledge-rag-pipeline.md`](docs/ai/knowledge-rag-pipeline.md), [`ai/writing-agent-phase1.md`](docs/ai/writing-agent-phase1.md), [`ai/writing-agent-phase2.md`](docs/ai/writing-agent-phase2.md) |
 | Estilo TS / firmas explícitas / lint | [`code-style.md`](docs/code-style.md) |
 | **Nuevo** documento de convención en el repo | [`documentation-format.md`](docs/documentation-format.md) |
 
@@ -65,7 +65,9 @@ Si hay duda entre dos docs, léelos ambos antes de proseguir.
 ```
 docs/
 ├── ai/
-│   └── knowledge-rag-pipeline.md
+│   ├── knowledge-rag-pipeline.md
+│   ├── writing-agent-phase1.md       # POST /api/agent inicial
+│   └── writing-agent-phase2.md      # editorContext, get_context, rewrite_fragment
 ├── code-style.md
 ├── documentation-format.md
 ├── backend/
