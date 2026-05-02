@@ -14,6 +14,49 @@
   --cf-warning: #fbbf24;
 }
 
+/* Narrative Mode — scoped theme (use under .nm-root) */
+.nm-root {
+  --nm-bg-deep: #07111f;
+  --nm-bg: #0b1020;
+  --nm-surface: #111b27;
+  --nm-surface-glass: rgba(255, 255, 255, 0.04);
+  --nm-primary: #8b5cf6;
+  --nm-primary-soft: rgba(139, 92, 246, 0.2);
+  --nm-accent: #3b82f6;
+  --nm-accent-green: #22c55e;
+  --nm-text: #f3f4f6;
+  --nm-text-secondary: #cbd5e1;
+  --nm-text-muted: #94a3b8;
+  --nm-border: rgba(255, 255, 255, 0.06);
+  --nm-rail-width: 3.5rem;
+  --nm-context-width: 18rem;
+  --font-editor: var(--font-editor-serif), ui-serif, Georgia, serif;
+}
+
+@keyframes nm-wave {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scaleX(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+.nm-analyze-wave {
+  animation: nm-wave 1.4s ease-in-out infinite;
+}
+
+.nm-analyze-wave-delayed {
+  animation: nm-wave 1.4s ease-in-out 0.2s infinite;
+}
+
+.nm-analyze-wave-delayed-2 {
+  animation: nm-wave 1.4s ease-in-out 0.4s infinite;
+}
+
 @theme inline {
   --color-cf-bg: var(--cf-bg);
   --color-cf-surface: var(--cf-surface);
@@ -25,6 +68,19 @@
   --color-cf-border: var(--cf-border);
   --color-cf-success: var(--cf-success);
   --color-cf-warning: var(--cf-warning);
+  /* Narrative: literales para utilidades Tailwind (alineados a .nm-root) */
+  --color-nm-bg-deep: #07111f;
+  --color-nm-bg: #0b1020;
+  --color-nm-surface: #111b27;
+  --color-nm-surface-glass: rgba(255, 255, 255, 0.04);
+  --color-nm-primary: #8b5cf6;
+  --color-nm-primary-soft: rgba(139, 92, 246, 0.2);
+  --color-nm-accent: #3b82f6;
+  --color-nm-accent-green: #22c55e;
+  --color-nm-text: #f3f4f6;
+  --color-nm-text-secondary: #cbd5e1;
+  --color-nm-text-muted: #94a3b8;
+  --color-nm-border: rgba(255, 255, 255, 0.06);
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
 }

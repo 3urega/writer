@@ -142,6 +142,15 @@ export function WorkspaceHome() {
                   Continuar el más reciente
                 </PrimaryLink>
               : null}
+              <PrimaryLink
+                href="/story/new"
+                className={[
+                  "!py-3.5 text-center text-base font-medium md:!py-4 md:text-base lg:text-base",
+                  "border border-cf-border/80 bg-cf-surface/40 !text-cf-text hover:!bg-cf-surface-hover",
+                ].join(" ")}
+              >
+                Modo narrativo — nueva historia
+              </PrimaryLink>
               <CreateBookForm />
             </div>
           </section>

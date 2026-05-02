@@ -10,6 +10,8 @@ export const versionMetadataSchema = z
     smartMerge: z.boolean().optional(),
     styleShift: z.string().optional(),
     aiGenerated: z.boolean().optional(),
+    /** Etiqueta narrativa para “momentos importantes” (modo narrativo). */
+    narrativeMomentTitle: z.string().optional(),
   })
   .passthrough();
 
