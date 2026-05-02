@@ -44,6 +44,8 @@ export type Branch = z.infer<typeof branchSchema>;
 export const chapterSchema = z.object({
   id: z.string().uuid(),
   order: z.number().int().nonnegative(),
+  /** Título del capítulo (UI). Vacío = derivar del orden. */
+  title: z.string().default(""),
   /** Puntero a la versión “oficial” (main) del capítulo. */
   mainVersionId: z.string().uuid().nullable().optional(),
   branches: z.array(branchSchema),

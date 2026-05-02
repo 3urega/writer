@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { getStoredRemoteProjectId } from "@/lib/storage/remoteProjectId";
 
@@ -16,7 +16,13 @@ const envDefaultProjectId =
     : "";
 
 export function AgentConsole() {
-  const [projectId, setProjectId] = useState("");
+  const [projectId, setProjectId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    const stored = getStoredRemoteProjectId();
+    if (stored) return stored;
+    if (envDefaultProjectId) return envDefaultProjectId;
+    return "";
+  });
   const [message, setMessage] = useState(
     "Busca en mi biblioteca patrones de diálogo tenso."
   );
@@ -30,15 +36,6 @@ export function AgentConsole() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AgentApiResponse | null>(null);
-
-  useEffect(() => {
-    const stored = getStoredRemoteProjectId();
-    if (stored) {
-      setProjectId(stored);
-    } else if (envDefaultProjectId) {
-      setProjectId(envDefaultProjectId);
-    }
-  }, []);
 
   async function onSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();

@@ -22,10 +22,26 @@ function TitleField({
   value: string;
   onSave: (id: string, next: string, previous: string) => void;
 }) {
+  return (
+    <TitleFieldInner
+      key={`${docId}:${value}`}
+      docId={docId}
+      value={value}
+      onSave={onSave}
+    />
+  );
+}
+
+function TitleFieldInner({
+  docId,
+  value,
+  onSave,
+}: {
+  docId: string;
+  value: string;
+  onSave: (id: string, next: string, previous: string) => void;
+}) {
   const [v, setV] = useState(value);
-  useEffect(() => {
-    setV(value);
-  }, [docId, value]);
   return (
     <input
       type="text"
@@ -73,7 +89,9 @@ export function KnowledgeLibrary({ projectId }: KnowledgeLibraryProps) {
   }, [projectId]);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {

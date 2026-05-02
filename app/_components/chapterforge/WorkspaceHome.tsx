@@ -1,11 +1,14 @@
+"use client";
+
 import Link from "next/link";
-import { recentProjects } from "@/lib/chapterforge/demo-data";
+import { useCallback, useEffect, useState } from "react";
+
+import { CreateBookForm } from "@/app/_components/chapterforge/CreateBookForm";
+import type { ProjectSummary } from "@/lib/chapterforge/types";
 import { ActionTile } from "./ActionTile";
 import { PrimaryLink } from "./PrimaryLink";
 import { ProjectCard } from "./ProjectCard";
 import { IconFileUp, IconLayers, IconPencil, IconSparkle } from "./icons";
-
-const WRITE_HREF = "/write";
 
 const philosophy = [
   "Your draft evolves in versions — nothing is lost.",
@@ -13,9 +16,43 @@ const philosophy = [
   "Structure comes from iteration.",
 ];
 
+function writeHref(projectId: string): string {
+  return `/write?project=${encodeURIComponent(projectId)}`;
+}
+
 export function WorkspaceHome() {
-  const hasProjects = recentProjects.length > 0;
-  const mainCta = hasProjects ? "Continue Writing" : "Create New Book";
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
+
+  const loadProjects = useCallback(async () => {
+    setListLoading(true);
+    setListError(null);
+    try {
+      const r = await fetch("/api/project");
+      const data = (await r.json().catch(() => ({}))) as {
+        projects?: ProjectSummary[];
+        error?: string;
+      };
+      if (!r.ok) {
+        throw new Error(data.error ?? `Error ${r.status}`);
+      }
+      setProjects(Array.isArray(data.projects) ? data.projects : []);
+    } catch (e) {
+      setProjects([]);
+      setListError(e instanceof Error ? e.message : "No se pudo cargar la lista");
+    } finally {
+      setListLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadProjects();
+  }, [loadProjects]);
+
+  const hasProjects = projects.length > 0;
+  const continueHref =
+    hasProjects && projects[0] ? writeHref(projects[0].id) : "/write";
 
   return (
     <div
@@ -89,55 +126,63 @@ export function WorkspaceHome() {
               ].join(" ")}
             >
               {hasProjects
-                ? "Resume where you left off. The text stays under your control, version by version."
-                : "Start your first book. Your ideas deserve structure."}
+                ? "Continúa donde lo dejaste. El texto sigue bajo tu control, versión a versión."
+                : "Empieza tu primer libro. Tus ideas merecen estructura."}
             </p>
             <div
-              className={["flex flex-col gap-3", "md:gap-4", "lg:max-w-md"].join(" ")}
+              className={["flex flex-col gap-3", "md:gap-4", "lg:max-w-md"].join(
+                " "
+              )}
             >
-              <PrimaryLink
-                href={WRITE_HREF}
-                className="!py-3.5 text-base font-medium md:!py-4 md:text-base lg:text-base"
-              >
-                {mainCta}
-              </PrimaryLink>
-              {hasProjects ? (
-                <Link
-                  href={WRITE_HREF}
-                  className={[
-                    "min-h-11 w-full text-center text-sm",
-                    "text-cf-text-muted decoration-cf-border underline decoration-1",
-                    "underline-offset-4 hover:text-cf-text",
-                    "md:min-h-0 md:py-0.5",
-                  ].join(" ")}
+              {hasProjects ?
+                <PrimaryLink
+                  href={continueHref}
+                  className="!py-3.5 text-base font-medium md:!py-4 md:text-base lg:text-base"
                 >
-                  Create New Book
-                </Link>
-              ) : null}
+                  Continuar el más reciente
+                </PrimaryLink>
+              : null}
+              <CreateBookForm />
             </div>
           </section>
 
           <section className="order-2 min-w-0 px-0 py-0">
-            <h2
-              className={[
-                "text-lg font-medium text-cf-text",
-                "md:text-lg md:font-medium",
-                "lg:text-xl",
-              ].join(" ")}
-            >
-              Recent projects
-            </h2>
-            {!hasProjects ? (
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2
+                className={[
+                  "text-lg font-medium text-cf-text",
+                  "md:text-lg md:font-medium",
+                  "lg:text-xl",
+                ].join(" ")}
+              >
+                Tus libros
+              </h2>
+              <button
+                type="button"
+                onClick={() => void loadProjects()}
+                disabled={listLoading}
+                className="text-xs text-cf-primary hover:underline disabled:opacity-50"
+              >
+                Actualizar
+              </button>
+            </div>
+            {listError ?
+              <p className="mt-2 text-sm text-cf-warning">{listError}</p>
+            : null}
+            {listLoading ?
+              <p className="mt-2 text-sm text-cf-text-muted">Cargando…</p>
+            : !hasProjects && !listError ?
               <p
                 className={[
                   "mt-2 text-sm text-cf-text-muted",
                   "md:mt-2.5 md:text-base md:leading-6",
                 ].join(" ")}
               >
-                No open books yet. One focused workspace will appear here.
+                Aún no hay libros en el servidor. Crea uno con el formulario de
+                la izquierda.
               </p>
-            ) : null}
-            {hasProjects ? (
+            : null}
+            {hasProjects ?
               <ul
                 className={[
                   "mt-3 flex max-h-72 flex-col gap-3 overflow-y-auto overscroll-contain",
@@ -147,13 +192,13 @@ export function WorkspaceHome() {
                 ].join(" ")}
                 style={{ WebkitOverflowScrolling: "touch" }}
               >
-                {recentProjects.map((p) => (
+                {projects.map((p) => (
                   <li key={p.id}>
-                    <ProjectCard project={p} href={WRITE_HREF} />
+                    <ProjectCard project={p} href={writeHref(p.id)} />
                   </li>
                 ))}
               </ul>
-            ) : null}
+            : null}
           </section>
         </div>
 
@@ -165,7 +210,7 @@ export function WorkspaceHome() {
               "lg:mb-1 lg:text-xl",
             ].join(" ")}
           >
-            Quick actions
+            Accesos rápidos
           </h2>
           <div
             className={[
@@ -175,27 +220,27 @@ export function WorkspaceHome() {
             ].join(" ")}
           >
             <ActionTile
-              href={WRITE_HREF}
-              label="New Chapter"
-              description="Add to your manuscript"
+              href={continueHref}
+              label="Escribir"
+              description="Ir al editor"
               icon={<IconPencil />}
             />
             <ActionTile
-              href={WRITE_HREF}
-              label="Import PDF"
-              description="Knowledge base (RAG)"
+              href={continueHref}
+              label="Importar PDF"
+              description="Base de conocimiento"
               icon={<IconFileUp />}
             />
             <ActionTile
-              href={WRITE_HREF}
-              label="View Versions"
-              description="History of snapshots"
+              href={continueHref}
+              label="Versiones"
+              description="Historial"
               icon={<IconLayers />}
             />
             <ActionTile
-              href={WRITE_HREF}
-              label="Writing Assistant"
-              description="Refine a selection"
+              href={continueHref}
+              label="Asistente"
+              description="Refinar texto"
               icon={<IconSparkle />}
             />
           </div>

@@ -82,6 +82,7 @@ export function createInitialProject(name: string): {
   const chapter: Chapter = {
     id: chapterId,
     order: 0,
+    title: "",
     mainVersionId: firstVersion.id,
     branches: [mainBranch],
     versions: [firstVersion],
@@ -114,6 +115,7 @@ type LegacyVersion = {
 type LegacyChapter = {
   id: string;
   order: number;
+  title?: string;
   versions: LegacyVersion[];
   mainVersionId?: string | null;
   branches?: Branch[];
@@ -136,7 +138,12 @@ export function normalizeProject(input: Project | Record<string, unknown>): Proj
   }
   const chapters: Chapter[] = raw.chapters.map((ch) => {
     if (ch.branches?.length) {
-      const c = { ...ch, branches: ch.branches, versions: ch.versions };
+      const c = {
+        ...ch,
+        title: ch.title ?? "",
+        branches: ch.branches,
+        versions: ch.versions,
+      };
       return chapterSchema.parse(c);
     }
     const t = nowIso();
@@ -167,6 +174,7 @@ export function normalizeProject(input: Project | Record<string, unknown>): Proj
     return chapterSchema.parse({
       id: ch.id,
       order: ch.order,
+      title: ch.title ?? "",
       mainVersionId: ch.mainVersionId ?? firstId ?? null,
       branches: [mainBranch],
       versions,
@@ -191,6 +199,36 @@ export function findVersion(
   versionId: string
 ): Version | undefined {
   return chapter.versions.find((v) => v.id === versionId);
+}
+
+/**
+ * Si la versión activa es la única de su rama y está vacía, un guardado con texto
+ * actualiza esa misma entrada (mismo id) en lugar de crear una #2 y dejar #1 vacía.
+ */
+export function amendLoneEmptyBranchTip(
+  chapter: Chapter,
+  activeVersionId: string,
+  branchId: string,
+  nextContent: string
+): Chapter | null {
+  if (nextContent.trim() === "") return null;
+  const v = findVersion(chapter, activeVersionId);
+  if (!v || v.branchId !== branchId) return null;
+  if (v.content.trim() !== "") return null;
+
+  const onBranch = chapter.versions.filter((x) => x.branchId === branchId);
+  if (onBranch.length !== 1) return null;
+  if (onBranch[0].id !== activeVersionId) return null;
+
+  const next: Version = {
+    ...v,
+    content: nextContent,
+    createdAt: nowIso(),
+  };
+  return {
+    ...chapter,
+    versions: chapter.versions.map((x) => (x.id === v.id ? next : x)),
+  };
 }
 
 function slugifyIntent(name: string): string {

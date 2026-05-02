@@ -81,6 +81,9 @@ model Chapter {
   projectId String  @map("project_id") @db.Uuid
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   order     Int
+  /// Título visible (p. ej. «El umbral»). Vacío = mostrar solo número de capítulo.
+  title     String  @default("")
+
 
   /// Puntero a la versión "oficial" (main) del capítulo. @unique: una fila de Version como máximo.
   mainVersionId String?  @unique @map("main_version_id") @db.Uuid

@@ -1,20 +1,28 @@
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { WriteEditorClient } from "./WriteEditorClient";
 
 export default function WritePage() {
   return (
-    <div className="flex min-h-dvh min-h-0 w-full flex-1 flex-col bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-      <header className="shrink-0 border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
+    <div className="flex min-h-dvh min-h-0 w-full flex-1 flex-col bg-cf-bg text-cf-text">
+      <header className="shrink-0 border-b border-cf-border px-4 py-2">
         <Link
           href="/"
-          className="text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+          className="text-sm text-cf-text-muted hover:text-cf-primary"
         >
-          Back to workspace
+          Volver al espacio de trabajo
         </Link>
       </header>
-      <WriteEditorClient />
+      <Suspense
+        fallback={
+          <div className="flex min-h-40 flex-1 items-center justify-center text-sm text-cf-text-muted">
+            Cargando editor…
+          </div>
+        }
+      >
+        <WriteEditorClient />
+      </Suspense>
     </div>
   );
 }
-

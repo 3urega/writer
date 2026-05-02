@@ -62,6 +62,7 @@ function mapRowToProject(p: ProjectWithGraph): Project {
       .map((ch) => ({
         id: ch.id,
         order: ch.order,
+        title: ch.title ?? "",
         mainVersionId: ch.mainVersionId,
         branches: ch.branches
           .slice()
@@ -135,6 +136,70 @@ export async function loadFirstProjectFromPostgres(): Promise<Project | null> {
   return mapRowToProject(row);
 }
 
+export type ProjectListSummary = {
+  id: string;
+  name: string;
+  lastEdited: string;
+  chapterCount: number;
+  progress: number;
+};
+
+function formatLastEditedEs(updatedAt: Date): string {
+  const diffMs = Date.now() - updatedAt.getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "Ahora";
+  if (mins < 60) return `Hace ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `Hace ${hours} h`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `Hace ${days} d`;
+  return updatedAt.toLocaleDateString("es-ES", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/**
+ * Listado ligero para la home: orden por última actualización.
+ */
+export async function listProjectSummariesFromPostgres(): Promise<
+  ProjectListSummary[]
+> {
+  const rows = await getPrismaClient().project.findMany({
+    orderBy: { updatedAt: "desc" },
+    take: 100,
+    select: {
+      id: true,
+      name: true,
+      updatedAt: true,
+      chapters: {
+        select: {
+          mainVersion: {
+            select: { content: true },
+          },
+        },
+      },
+    },
+  });
+
+  return rows.map((r) => {
+    const chapters = r.chapters;
+    const n = chapters.length;
+    const withText = chapters.filter(
+      (c) => (c.mainVersion?.content?.trim().length ?? 0) > 0
+    ).length;
+    const progress = n > 0 ? withText / n : 0;
+    return {
+      id: r.id,
+      name: r.name,
+      lastEdited: formatLastEditedEs(r.updatedAt),
+      chapterCount: n,
+      progress,
+    };
+  });
+}
+
 const versionInput = (v: Version) => ({
   id: v.id,
   content: v.content,
@@ -161,6 +226,7 @@ const branchInput = (b: Branch) => ({
 const chapterInput = (ch: Chapter) => ({
   id: ch.id,
   order: ch.order,
+  title: ch.title ?? "",
   branches: { create: ch.branches.map(branchInput) },
   versions: { create: ch.versions.map(versionInput) },
 });

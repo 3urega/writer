@@ -27,7 +27,8 @@ export function ProjectCard({ project, href }: ProjectCardProps) {
           </span>
         </div>
         <p className="mt-1.5 text-xs text-cf-text-muted md:mt-2 md:text-sm">
-          {project.chapterCount} chapter{project.chapterCount === 1 ? "" : "s"}
+          {project.chapterCount}{" "}
+          {project.chapterCount === 1 ? "capítulo" : "capítulos"}
         </p>
         <div
           className="mt-3 h-1.5 overflow-hidden rounded-full bg-cf-bg md:mt-4 md:h-2"
@@ -42,7 +43,7 @@ export function ProjectCard({ project, href }: ProjectCardProps) {
           />
         </div>
         <p className="mt-1.5 text-xs tabular-nums text-cf-text-muted md:mt-2 md:text-sm">
-          {percent}% draft
+          {percent}% con texto en versión principal
         </p>
       </Card>
     </Link>
