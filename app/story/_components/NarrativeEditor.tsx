@@ -19,6 +19,9 @@ export type NarrativeEditorProps = {
   onWordCount?: (n: number) => void;
   onToast?: (message: string) => void;
   onRequestExploration?: (selectedSnippet: string) => void;
+  onSelectionChange?: (start: number, end: number) => void;
+  /** Si existe, las acciones de toolbar (salvo explorar) llaman al agente en lugar del mock local. */
+  onAgentInstruction?: (instruction: string, selectedFragment: string) => void;
 };
 
 function countWords(s: string): number {
@@ -36,12 +39,30 @@ function replaceRange(
   return full.slice(0, start) + insert + full.slice(end);
 }
 
+const AGENT_INSTR: Record<
+  Exclude<NarrativeSelectionActionId, "explore">,
+  string
+> = {
+  rewrite:
+    "Reescribe el siguiente fragmento conservando la voz y el sentido. Propón texto sustituto listo para pegar:",
+  tension:
+    "Aumenta la tensión dramática y el peso emocional de este fragmento sin volverlo melodramático:",
+  dialogue:
+    "Enriquece el diálogo y el subtexto; mantén ritmo natural en español:",
+  expand:
+    "Expande con detalle sensorial y matiz narrativo pertinente al tono del libro:",
+  shorten: "Haz este fragmento más breve y preciso, sin perder la esencia:",
+  tone: "Ajusta el tono según la intención del autor; no cambies hechos implícitos:",
+};
+
 export function NarrativeEditor({
   value,
   onChange,
   onWordCount,
   onToast,
   onRequestExploration,
+  onSelectionChange,
+  onAgentInstruction,
 }: NarrativeEditorProps) {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -53,12 +74,12 @@ export function NarrativeEditor({
 
   const syncSelection = useCallback(() => {
     const ta = taRef.current;
-    const wrap = wrapRef.current;
-    if (!ta || !wrap) return;
+    if (!ta) return;
     const a = ta.selectionStart;
     const b = ta.selectionEnd;
     setSelStart(a);
     setSelEnd(b);
+    onSelectionChange?.(a, b);
     if (a !== b && ta.value.slice(a, b).trim()) {
       const lh = Number.parseInt(getComputedStyle(ta).lineHeight, 10) || 28;
       const lines = ta.value.slice(0, a).split("\n").length;
@@ -68,13 +89,11 @@ export function NarrativeEditor({
     } else {
       setToolbarOpen(false);
     }
-  }, []);
+  }, [onSelectionChange]);
 
   useEffect(() => {
     onWordCount?.(countWords(value));
   }, [onWordCount, value]);
-
-  const selectedText = value.slice(selStart, selEnd);
 
   const applyAction = useCallback(
     (action: NarrativeSelectionActionId) => {
@@ -91,6 +110,16 @@ export function NarrativeEditor({
       if (action === "explore") {
         onRequestExploration?.(slice);
         setToolbarOpen(false);
+        return;
+      }
+
+      if (onAgentInstruction) {
+        onAgentInstruction(AGENT_INSTR[action], slice);
+        setToolbarOpen(false);
+        onToast?.("Tu colaborador narrativo está trabajando en ese fragmento…");
+        requestAnimationFrame(() => {
+          ta.focus();
+        });
         return;
       }
 
@@ -126,8 +155,16 @@ export function NarrativeEditor({
           break;
         case "shorten": {
           const first = slice.split(/[.!?]/)[0]?.trim() ?? slice;
-          const cut = first.length > 0 && first.length < slice.length ? first : slice.slice(0, Math.max(20, Math.ceil(slice.length / 2)));
-          next = replaceRange(value, a, b, cut + (cut.endsWith(".") ? "" : "…"));
+          const cut =
+            first.length > 0 && first.length < slice.length ?
+              first
+            : slice.slice(0, Math.max(20, Math.ceil(slice.length / 2)));
+          next = replaceRange(
+            value,
+            a,
+            b,
+            cut + (cut.endsWith(".") ? "" : "…")
+          );
           msg = "Versión más breve, suave.";
           break;
         }
@@ -151,7 +188,13 @@ export function NarrativeEditor({
         ta.focus();
       });
     },
-    [onChange, onRequestExploration, onToast, value]
+    [
+      onChange,
+      onAgentInstruction,
+      onRequestExploration,
+      onToast,
+      value,
+    ]
   );
 
   return (

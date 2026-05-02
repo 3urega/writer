@@ -62,6 +62,16 @@ export function NarrativeContextPanel({
                   className="rounded-lg bg-nm-surface-glass px-3 py-2 text-xs text-nm-text-secondary"
                 >
                   <span className="font-medium text-nm-text">{c.name}</span>
+                  {c.traits && c.traits.length > 0 ?
+                    <span className="ml-1 text-nm-text-muted">
+                      ({c.traits.join(", ")})
+                    </span>
+                  : null}
+                  {c.arc_state ?
+                    <span className="mt-0.5 block text-[11px] text-nm-primary/90">
+                      {c.arc_state}
+                    </span>
+                  : null}
                   {c.notes ?
                     <span className="mt-0.5 block text-nm-text-muted">
                       {c.notes.slice(0, 120)}
@@ -73,14 +83,50 @@ export function NarrativeContextPanel({
             </ul>
           </section>
         : null}
-        {storyContext && storyContext.open_threads.length > 0 ?
+        {storyContext && storyContext.story_events.length > 0 ?
+          <section>
+            <h3 className="text-xs font-medium text-nm-text-muted">
+              Momentos en la trama
+            </h3>
+            <ul className="mt-2 space-y-1.5 text-xs text-nm-text-secondary">
+              {storyContext.story_events.slice(0, 5).map((ev) => (
+                <li
+                  key={ev.id}
+                  className="rounded-lg bg-nm-surface-glass px-2 py-1.5"
+                >
+                  <span className="text-nm-text-muted">Cap. {ev.chapter}</span>{" "}
+                  · {ev.event}
+                  <span className="ml-1 text-[10px] uppercase text-nm-text-muted">
+                    {ev.importance}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        : null}
+        {storyContext &&
+        (storyContext.plot_threads.length > 0 ||
+          storyContext.open_threads.length > 0) ?
           <section>
             <h3 className="text-xs font-medium text-nm-text-muted">
               Hilos abiertos
             </h3>
-            <ul className="mt-2 list-inside list-disc space-y-1 text-xs text-nm-text-secondary">
-              {storyContext.open_threads.slice(0, 5).map((t, i) => (
-                <li key={i}>{t}</li>
+            <ul className="mt-2 space-y-2 text-xs text-nm-text-secondary">
+              {storyContext.plot_threads.slice(0, 6).map((t, i) => (
+                <li
+                  key={i}
+                  className="rounded-lg bg-nm-surface-glass px-2 py-1.5"
+                >
+                  {t.question}
+                  {t.resolved ?
+                    <span className="text-nm-text-muted"> — cerrado</span>
+                  : null}
+                </li>
+              ))}
+              {storyContext.open_threads.slice(0, 4).map((t, i) => (
+                <li key={`legacy-${i}`} className="list-inside list-disc">
+                  {t}
+                </li>
               ))}
             </ul>
           </section>
@@ -107,6 +153,11 @@ export function NarrativeContextPanel({
             Tono detectado
           </h3>
           <p className="mt-1 text-xs text-nm-text-muted">{toneDisplay}</p>
+          {storyContext?.tone.pacing ?
+            <p className="mt-1 text-[11px] text-nm-text-muted">
+              Ritmo: {storyContext.tone.pacing}
+            </p>
+          : null}
           <div
             className="mt-2 h-1.5 overflow-hidden rounded-full bg-nm-bg"
             role="progressbar"

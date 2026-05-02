@@ -23,6 +23,8 @@ import {
 } from "@/lib/domain/versioning";
 import type { Project } from "@/lib/domain/types";
 import type { NarrativeBootstrap } from "@/lib/story/narrativeBootstrap";
+import { runNarrativeAgentRequest } from "@/lib/story/narrativeAgentClient";
+import type { NarrativeSession } from "@/lib/story/narrativeSession";
 import {
   buildEditorialTimeline,
   listMomentLabelsFromMetadata,
@@ -50,6 +52,11 @@ const MOCK_REFS = [
 ] as const;
 
 const DRAFT_DEBOUNCE_MS = 640;
+
+function narrativeAgentModeFromUi(mode: string): NarrativeSession["agentMode"] {
+  if (mode === "collab" || mode === "gentle" || mode === "bold") return mode;
+  return "collab";
+}
 
 export function NarrativeWorkspace({
   projectId,
@@ -82,6 +89,10 @@ export function NarrativeWorkspace({
   const [draftStatus, setDraftStatus] = useState<NarrativeDraftStatus>("idle");
   const [toast, setToast] = useState<string | null>(null);
   const [editorHydrated, setEditorHydrated] = useState(false);
+  const [selectionStart, setSelectionStart] = useState(0);
+  const [selectionEnd, setSelectionEnd] = useState(0);
+  const [assistantReply, setAssistantReply] = useState<string | null>(null);
+  const [assistantBusy, setAssistantBusy] = useState(false);
 
   const initEditorRef = useRef(false);
 
@@ -271,6 +282,60 @@ export function NarrativeWorkspace({
     );
   }, []);
 
+  const invokeNarrativeAgent = useCallback(
+    async (userMessage: string) => {
+      if (!activeChapterId || !activeVersionId) {
+        setToast("Espera a que cargue el capítulo.");
+        return;
+      }
+      setOverlay("assistant");
+      setAssistantBusy(true);
+      setAssistantReply(null);
+      const hasSelection = selectionStart < selectionEnd;
+      const session: NarrativeSession = {
+        projectId,
+        chapterId: activeChapterId,
+        branchId: activeBranchId ?? null,
+        versionId: activeVersionId,
+        chapterText: editorText,
+        selectionStart: hasSelection ? selectionStart : undefined,
+        selectionEnd: hasSelection ? selectionEnd : undefined,
+        activeReferenceIds: refs.filter((r) => r.active).map((r) => r.id),
+        agentMode: narrativeAgentModeFromUi(agentMode),
+        storyMemorySnapshot: storyCtx ?? undefined,
+      };
+      try {
+        const res = await runNarrativeAgentRequest({
+          userMessage,
+          session,
+        });
+        setAssistantReply(
+          res.reply?.trim() ?
+            res.reply
+          : "La respuesta no trajo texto visible. Puedes reformular la petición o ampliar la selección."
+        );
+      } catch (e) {
+        setAssistantReply(
+          e instanceof Error ? e.message : "No se pudo contactar al asistente."
+        );
+      } finally {
+        setAssistantBusy(false);
+      }
+    },
+    [
+      activeBranchId,
+      activeChapterId,
+      activeVersionId,
+      agentMode,
+      editorText,
+      projectId,
+      refs,
+      selectionEnd,
+      selectionStart,
+      storyCtx,
+    ]
+  );
+
   const timelineLines = useMemo(() => {
     if (!remoteProject || !activeChapterId) return [];
     return buildEditorialTimeline(remoteProject, activeChapterId);
@@ -399,6 +464,15 @@ export function NarrativeWorkspace({
                 onChange={setEditorText}
                 onWordCount={setWordCount}
                 onToast={setToast}
+                onSelectionChange={(a, b) => {
+                  setSelectionStart(a);
+                  setSelectionEnd(b);
+                }}
+                onAgentInstruction={(instruction, fragment) => {
+                  void invokeNarrativeAgent(
+                    `${instruction}\n\n--- Fragmento ---\n\n${fragment}`
+                  );
+                }}
                 onRequestExploration={() => {
                   setOverlay("variation");
                   setToast(
@@ -419,7 +493,14 @@ export function NarrativeWorkspace({
                 value={agentInput}
                 onChange={setAgentInput}
                 onChip={onChip}
-                onStar={() => setOverlay("assistant")}
+                onStar={() => {
+                  const msg = agentInput.trim();
+                  if (!msg) {
+                    setOverlay("assistant");
+                    return;
+                  }
+                  void invokeNarrativeAgent(msg);
+                }}
               />
             </div>
           </div>
@@ -479,7 +560,13 @@ export function NarrativeWorkspace({
 
       <AssistantOverlay
         open={overlay === "assistant"}
-        onClose={() => setOverlay(null)}
+        onClose={() => {
+          setOverlay(null);
+          setAssistantReply(null);
+          setAssistantBusy(false);
+        }}
+        reply={assistantReply}
+        busy={assistantBusy}
       />
       <VariationOverlay
         open={overlay === "variation"}

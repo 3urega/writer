@@ -135,9 +135,13 @@ export function SaveMomentOverlay({
 export function AssistantOverlay({
   open,
   onClose,
+  reply,
+  busy,
 }: {
   open: boolean;
   onClose: () => void;
+  reply?: string | null;
+  busy?: boolean;
 }) {
   const titleId = useId();
   return (
@@ -149,15 +153,22 @@ export function AssistantOverlay({
         Asistente narrativo
       </h2>
       <p className="mt-2 text-sm leading-relaxed text-nm-text-muted">
-        Aquí trabajarás un fragmento concreto: tono, ritmo, claridad. Nada de
-        sustituir tu voz; sólo afinar lo que ya eliges mostrar.
+        Colabora con memoria de historia y herramientas de reescritura; lo
+        técnico queda oculto.
       </p>
-      <div className="mt-4 rounded-xl bg-nm-bg/80 p-4 text-sm text-nm-text-secondary">
-        <p className="text-nm-text-muted">Boceto de conversación</p>
-        <p className="mt-2 italic text-nm-text-muted">
-          (La IA real llegará en otra iteración.)
+      {busy ?
+        <p className="mt-4 text-sm text-nm-primary">Pensando con tu texto…</p>
+      : null}
+      {reply ?
+        <div className="mt-4 max-h-[50vh] overflow-y-auto rounded-xl bg-nm-bg/80 p-4 text-sm leading-relaxed text-nm-text">
+          {reply}
+        </div>
+      : !busy ?
+        <p className="mt-4 text-sm italic text-nm-text-muted">
+          Escribe en la barra inferior y pulsa la estrella, o elige una acción
+          sobre texto seleccionado.
         </p>
-      </div>
+      : null}
       <button
         type="button"
         onClick={onClose}

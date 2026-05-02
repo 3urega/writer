@@ -19,6 +19,7 @@ import {
   saveStoryContext,
   seedStoryContextFromBootstrap,
 } from "@/lib/story/storyContext";
+import { runNarrativeDiscoveryRequest } from "@/lib/story/narrativeDiscoveryClient";
 import { setStoredRemoteProjectId } from "@/lib/storage/remoteProjectId";
 import { createProjectOnServer } from "@/lib/storage/serverProjectClient";
 
@@ -88,32 +89,6 @@ function refinementForOption(optionId: string): string {
   }
 }
 
-function mockOpeningParagraph(
-  pitch: string,
-  optionId: string,
-  refinement: string
-): string {
-  const seed = pitch.trim().slice(0, 280);
-  const closing =
-    optionId === "mystery" ? "algo acaba de moverse en la penumbra."
-    : optionId === "tension" ? "el aire ya no cabe en el pecho de nadie."
-    : optionId === "tragedy" ?
-      "lo que ocurre después no tiene vuelta atrás, sólo consecuencias."
-    : "el mundo, al fin, empieza donde tú lo enciendes.";
-
-  return [
-    seed ?
-      seed + (pitch.length > 280 ? "…" : "")
-    : "La primera frase aún tiembla, como quien posa la mano sobre una puerta que no sabe si abrir.",
-    "",
-    refinement.trim() ?
-      `Lo que guardas en este detalle lo dice todo: ${refinement.trim().slice(0, 160)}${refinement.length > 160 ? "…" : ""}`
-    : "Y en ese instante —demasiado humano para ser heroico— entendimos que no había mapa.",
-    "",
-    `Hasta aquí llega la brújula del guion; lo demás, ${closing}`,
-  ].join("\n");
-}
-
 export function StoryCreationFlow() {
   const router = useRouter();
   const [beat, setBeat] = useState<Beat>("invite");
@@ -123,13 +98,40 @@ export function StoryCreationFlow() {
   const [openingParagraph, setOpeningParagraph] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [openingLoading, setOpeningLoading] = useState(false);
+  const [interpretationReply, setInterpretationReply] = useState("");
+  const [interpretationLoading, setInterpretationLoading] = useState(false);
+  const [interpretationError, setInterpretationError] = useState<string | null>(
+    null
+  );
+  const [openingDraftError, setOpeningDraftError] = useState<string | null>(
+    null
+  );
+  const [openingDraftLoading, setOpeningDraftLoading] = useState(false);
 
   const derived = useMemo(() => deriveFromPitch(pitch), [pitch]);
 
-  const onContinueInvite = useCallback(() => {
-    if (!pitch.trim()) return;
+  const onContinueInvite = useCallback(async () => {
+    const p = pitch.trim();
+    if (!p) return;
+    setInterpretationError(null);
+    setInterpretationLoading(true);
     setBeat("thinking");
-    window.setTimeout(() => setBeat("summary"), 2200);
+    try {
+      const { reply } = await runNarrativeDiscoveryRequest({
+        messages: [{ role: "user", content: p }],
+      });
+      setInterpretationReply(reply);
+      setBeat("summary");
+    } catch (e) {
+      setInterpretationError(
+        e instanceof Error ?
+          e.message
+        : "No pudimos seguir. Revisa tu conexión o la configuración del asistente."
+      );
+      setBeat("invite");
+    } finally {
+      setInterpretationLoading(false);
+    }
   }, [pitch]);
 
   const onPickStart = useCallback((id: string) => {
@@ -137,16 +139,46 @@ export function StoryCreationFlow() {
     setBeat("refine");
   }, []);
 
-  const onSendRefinement = useCallback(() => {
-    if (!selectedStartId || !refinementAnswer.trim()) return;
+  const onSendRefinement = useCallback(async () => {
+    if (
+      !selectedStartId ||
+      !refinementAnswer.trim() ||
+      !interpretationReply.trim()
+    ) {
+      return;
+    }
+    const optionLabel =
+      START_OPTIONS.find((o) => o.id === selectedStartId)?.label ??
+      selectedStartId;
+    setOpeningDraftError(null);
+    setOpeningDraftLoading(true);
+    setOpeningParagraph("");
     setBeat("opening");
-    const text = mockOpeningParagraph(
-      pitch,
-      selectedStartId,
-      refinementAnswer
-    );
-    setOpeningParagraph(text);
-  }, [pitch, refinementAnswer, selectedStartId]);
+    const followUp = [
+      `Me gustaría comenzar por: «${optionLabel}».`,
+      "",
+      `Un detalle que quiero que guarde la escena: ${refinementAnswer.trim()}`,
+      "",
+      "Escribe ahora una apertura breve (uno o dos bloques cortos, no un capítulo entero) que pueda pegar en mi borrador, fiel al tono que venimos explorando.",
+    ].join("\n");
+    try {
+      const { reply } = await runNarrativeDiscoveryRequest({
+        messages: [
+          { role: "user", content: pitch.trim() },
+          { role: "assistant", content: interpretationReply },
+          { role: "user", content: followUp },
+        ],
+      });
+      setOpeningParagraph(reply);
+    } catch (e) {
+      setOpeningDraftError(
+        e instanceof Error ? e.message : "No se pudo generar la apertura."
+      );
+      setBeat("refine");
+    } finally {
+      setOpeningDraftLoading(false);
+    }
+  }, [interpretationReply, pitch, refinementAnswer, selectedStartId]);
 
   const onOpenEditor = useCallback(async () => {
     setSubmitError(null);
@@ -223,17 +255,20 @@ export function StoryCreationFlow() {
                 ].join(" ")}
                 placeholder="Empieza donde te resulte más honesto…"
               />
+              {interpretationError ?
+                <p className="text-sm text-red-300">{interpretationError}</p>
+              : null}
               <div className="flex justify-end">
                 <button
                   type="button"
-                  onClick={onContinueInvite}
-                  disabled={!pitch.trim()}
+                  onClick={() => void onContinueInvite()}
+                  disabled={!pitch.trim() || interpretationLoading}
                   className={[
                     "rounded-full bg-nm-primary px-8 py-3 text-sm font-semibold text-white",
                     "transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-35",
                   ].join(" ")}
                 >
-                  Continuar
+                  {interpretationLoading ? "Un momento…" : "Continuar"}
                 </button>
               </div>
             </section>
@@ -245,15 +280,27 @@ export function StoryCreationFlow() {
 
           {beat === "thinking" ? <ThinkingIndicator /> : null}
 
-          {beat === "summary" || beat === "refine" || beat === "opening" ?
+          {beat === "summary" || beat === "refine" ?
             <>
               <AiMessage>
-                <p className="text-nm-text">
-                  Esto es lo que escucho cuando dejo que tu historia me
-                  atraviese. Si algo se siente hueco, lo ajustamos en el
-                  camino: aquí no hay examen.
+                <p className="mb-3 text-sm text-nm-text-muted">
+                  Lo que tu compañero narrativo percibe, en su voz. Si algo no
+                  encaja, lo retocamos en el siguiente paso.
                 </p>
+                <div
+                  className={[
+                    "whitespace-pre-wrap text-[15px] leading-relaxed text-nm-text",
+                    "sm:text-[17px] sm:leading-8",
+                    "font-[family-name:var(--font-editor)]",
+                  ].join(" ")}
+                >
+                  {interpretationReply}
+                </div>
               </AiMessage>
+              <p className="text-xs text-nm-text-muted">
+                Estas notas son sólo una brújula breve a partir de tu texto; no
+                hace falta que coincidan al dedillo con lo anterior.
+              </p>
               <SummaryGrid
                 protagonist={derived.protagonist}
                 conflict={derived.conflict}
@@ -287,22 +334,34 @@ export function StoryCreationFlow() {
               question={refinementForOption(selectedStartId)}
               answer={refinementAnswer}
               onAnswerChange={setRefinementAnswer}
-              onSend={onSendRefinement}
+              onSend={() => void onSendRefinement()}
+              disabled={openingDraftLoading}
             />
           : null}
 
           {beat === "opening" ?
             <>
-              {submitError ?
+              {openingDraftError ?
                 <p className="text-center text-sm text-red-300 sm:text-left">
-                  {submitError}
+                  {openingDraftError}
                 </p>
               : null}
-              <OpeningProposal
-                paragraph={openingParagraph}
-                onOpenEditor={() => void onOpenEditor()}
-                loading={openingLoading}
-              />
+              {openingDraftLoading && !openingParagraph.trim() ?
+                <ThinkingIndicator />
+              : (
+                <>
+                  {submitError ?
+                    <p className="text-center text-sm text-red-300 sm:text-left">
+                      {submitError}
+                    </p>
+                  : null}
+                  <OpeningProposal
+                    paragraph={openingParagraph}
+                    onOpenEditor={() => void onOpenEditor()}
+                    loading={openingLoading}
+                  />
+                </>
+              )}
             </>
           : null}
         </div>

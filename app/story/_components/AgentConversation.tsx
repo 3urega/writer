@@ -229,7 +229,7 @@ export function OpeningProposal({
       <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:justify-end">
         <button
           type="button"
-          disabled={loading}
+          disabled={loading || !paragraph.trim()}
           onClick={onOpenEditor}
           className={[
             "rounded-full bg-nm-primary px-8 py-3 text-center text-sm font-semibold text-white shadow-lg shadow-nm-primary/25",
