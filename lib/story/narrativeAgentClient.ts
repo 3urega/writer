@@ -10,6 +10,7 @@ export type NarrativeAgentApiResult = {
   }>;
   stoppedReason: "final" | "max_steps";
   intent: string;
+  lastCreatedVersionId: string | null;
 };
 
 export async function runNarrativeAgentRequest(input: {

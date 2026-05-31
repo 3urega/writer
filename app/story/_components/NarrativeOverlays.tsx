@@ -137,11 +137,18 @@ export function AssistantOverlay({
   onClose,
   reply,
   busy,
+  variationUndoable,
+  onUndoVariation,
+  undoBusy,
 }: {
   open: boolean;
   onClose: () => void;
   reply?: string | null;
   busy?: boolean;
+  /** Hay una versión aplicada reciente; se puede volver al main anterior. */
+  variationUndoable?: boolean;
+  onUndoVariation?: () => void;
+  undoBusy?: boolean;
 }) {
   const titleId = useId();
   return (
@@ -159,11 +166,32 @@ export function AssistantOverlay({
       {busy ?
         <p className="mt-4 text-sm text-nm-primary">Pensando con tu texto…</p>
       : null}
+      {variationUndoable && !busy ?
+        <div className="mt-4 rounded-xl border border-nm-primary/35 bg-nm-primary/10 px-4 py-3 text-sm text-nm-text">
+          <p>
+            Puedes deshacer la última versión aplicada al capítulo y volver al
+            texto que tenías antes en el servidor.
+          </p>
+          {onUndoVariation ?
+            <button
+              type="button"
+              disabled={undoBusy}
+              onClick={onUndoVariation}
+              className={[
+                "mt-3 w-full rounded-full border border-nm-border py-2 text-sm font-medium text-nm-text",
+                "hover:bg-nm-surface-glass disabled:cursor-wait disabled:opacity-60",
+              ].join(" ")}
+            >
+              {undoBusy ? "Revirtiendo…" : "Deshacer última variación"}
+            </button>
+          : null}
+        </div>
+      : null}
       {reply ?
         <div className="mt-4 max-h-[50vh] overflow-y-auto rounded-xl bg-nm-bg/80 p-4 text-sm leading-relaxed text-nm-text">
           {reply}
         </div>
-      : !busy ?
+      : !busy && !variationUndoable ?
         <p className="mt-4 text-sm italic text-nm-text-muted">
           Escribe en la barra inferior y pulsa la estrella, o elige una acción
           sobre texto seleccionado.

@@ -17,6 +17,8 @@ export type NarrativeIntentResult = {
 
 const REWRITE_HINT =
   /\b(reescrib|reformula|cambia esto|mejor|pulir|corrige)\b/i;
+const RHYME_HINT =
+  /\b(rima|rimar|asonante|asonancia|consonante|metrica|métrica|vers[oó])\b/i;
 const TENSION_HINT = /\b(tensión|tenso|suspenso|miedo|aceler|urgente)\b/i;
 const DIALOGUE_HINT = /\b(diálogo|habla|convers|dice|pregunta|responde)\b/i;
 const CONTINUE_HINT = /\b(continu|siguiente|qué pasa después|sigue)\b/i;
@@ -33,7 +35,9 @@ export function detectNarrativeIntent(userMessage: string): NarrativeIntentResul
   if (CONTINUE_HINT.test(m)) return { intent: "continue", confidence: 0.72 };
   if (DIALOGUE_HINT.test(m)) return { intent: "dialogue", confidence: 0.68 };
   if (TENSION_HINT.test(m)) return { intent: "tension", confidence: 0.68 };
-  if (REWRITE_HINT.test(m)) return { intent: "rewrite", confidence: 0.7 };
+  if (RHYME_HINT.test(m) || REWRITE_HINT.test(m)) {
+    return { intent: "rewrite", confidence: RHYME_HINT.test(m) ? 0.78 : 0.7 };
+  }
   return { intent: "general", confidence: 0.5 };
 }
 
@@ -66,14 +70,14 @@ export function allowedToolNamesForIntent(intent: NarrativeIntent): Set<string> 
 
   switch (intent) {
     case "rewrite":
-      return new Set([...core, ...style, ...evalDiff]);
+      return new Set([...core, ...style, ...evalDiff, ...version]);
     case "tension":
     case "dialogue":
-      return new Set([...core, ...style, ...evalDiff]);
+      return new Set([...core, ...style, ...evalDiff, ...version]);
     case "continue":
       return new Set([...core, ...style]);
     case "unsure_scene":
-      return new Set([...core, ...style, ...evalDiff]);
+      return new Set([...core, ...style, ...evalDiff, ...version]);
     case "memory_update":
       return new Set([
         "search_knowledge",

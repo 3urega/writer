@@ -8,6 +8,7 @@ import { runWritingAgent } from "@/lib/agent/application/runWritingAgent";
 import type { LlmClient } from "@/lib/agent/ports/llmClient";
 import type {
   AgentEditorContextPayload,
+  AgentStepTrace,
   RunWritingAgentResult,
 } from "@/lib/agent/ports/types";
 import { createDefaultToolRegistry } from "@/lib/agent/tools/registry";
@@ -22,6 +23,8 @@ export type RunNarrativeAgentInput = {
 
 export type RunNarrativeAgentOutput = RunWritingAgentResult & {
   intent: NarrativeIntent;
+  /** Última fila creada por create_version en esta ejecución, si hubo. */
+  lastCreatedVersionId: string | null;
 };
 
 /**
@@ -57,8 +60,33 @@ export class RunNarrativeAgent {
       },
       { llm, registry }
     );
-    return { ...result, intent };
+    return {
+      ...result,
+      intent,
+      lastCreatedVersionId: extractLastCreatedVersionId(result.steps),
+    };
   }
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function extractLastCreatedVersionId(steps: AgentStepTrace[]): string | null {
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const s = steps[i];
+    if (s.toolName !== "create_version" || !s.toolResultSummary?.trim()) {
+      continue;
+    }
+    const summary = s.toolResultSummary.trim();
+    try {
+      const j = JSON.parse(summary) as { version_id?: string };
+      if (j.version_id && UUID_RE.test(j.version_id)) return j.version_id;
+    } catch {
+      const m = /"version_id"\s*:\s*"([^"]+)"/.exec(summary);
+      if (m?.[1] && UUID_RE.test(m[1])) return m[1];
+    }
+  }
+  return null;
 }
 
 function buildEditorContext(

@@ -20,6 +20,8 @@ import {
   findChapter,
   findMainBranchForChapter,
   findVersion,
+  replaceChapter,
+  setChapterMainVersion,
 } from "@/lib/domain/versioning";
 import type { Project } from "@/lib/domain/types";
 import type { NarrativeBootstrap } from "@/lib/story/narrativeBootstrap";
@@ -93,6 +95,10 @@ export function NarrativeWorkspace({
   const [selectionEnd, setSelectionEnd] = useState(0);
   const [assistantReply, setAssistantReply] = useState<string | null>(null);
   const [assistantBusy, setAssistantBusy] = useState(false);
+  const [revertMainVersionId, setRevertMainVersionId] = useState<string | null>(
+    null
+  );
+  const [undoBusy, setUndoBusy] = useState(false);
 
   const initEditorRef = useRef(false);
 
@@ -177,6 +183,7 @@ export function NarrativeWorkspace({
     initEditorRef.current = false;
     setEditorHydrated(false);
     setEditorText("");
+    setRevertMainVersionId(null);
   }, [projectId]);
 
   useEffect(() => {
@@ -282,12 +289,37 @@ export function NarrativeWorkspace({
     );
   }, []);
 
+  const undoLastAgentVariation = useCallback(async () => {
+    if (!revertMainVersionId || !activeChapterId) return;
+    setUndoBusy(true);
+    try {
+      const p = await fetchProjectFromServer(projectId);
+      const ch = findChapter(p, activeChapterId);
+      if (!ch) throw new Error("No encontramos el capítulo.");
+      const ch2 = setChapterMainVersion(ch, revertMainVersionId);
+      const p2 = replaceChapter(p, ch2);
+      await persistProject(p2);
+      const v = findVersion(ch2, revertMainVersionId);
+      setEditorText(v?.content ?? "");
+      setRevertMainVersionId(null);
+      setToast("Volviste a la versión anterior del capítulo.");
+      setOverlay(null);
+    } catch (e) {
+      setToast(
+        e instanceof Error ? e.message : "No se pudo deshacer la variación."
+      );
+    } finally {
+      setUndoBusy(false);
+    }
+  }, [activeChapterId, persistProject, projectId, revertMainVersionId]);
+
   const invokeNarrativeAgent = useCallback(
     async (userMessage: string) => {
       if (!activeChapterId || !activeVersionId) {
         setToast("Espera a que cargue el capítulo.");
         return;
       }
+      const mainBeforeApply = activeVersionId;
       setOverlay("assistant");
       setAssistantBusy(true);
       setAssistantReply(null);
@@ -308,7 +340,37 @@ export function NarrativeWorkspace({
         const res = await runNarrativeAgentRequest({
           userMessage,
           session,
+          maxSteps: 10,
         });
+        const lastId = res.lastCreatedVersionId ?? null;
+        if (lastId && lastId !== mainBeforeApply && activeChapterId) {
+          try {
+            const p = await fetchProjectFromServer(projectId);
+            const ch = findChapter(p, activeChapterId);
+            if (!ch) {
+              throw new Error("No encontramos el capítulo en el servidor.");
+            }
+            if (!findVersion(ch, lastId)) {
+              throw new Error(
+                "La nueva versión aún no está disponible; recarga la página o reintenta."
+              );
+            }
+            const ch2 = setChapterMainVersion(ch, lastId);
+            const p2 = replaceChapter(p, ch2);
+            await persistProject(p2);
+            const vNew = findVersion(ch2, lastId);
+            if (vNew) setEditorText(vNew.content);
+            setRevertMainVersionId(mainBeforeApply);
+            setToast("Texto actualizado; puedes deshacer desde el asistente.");
+          } catch (e) {
+            setRevertMainVersionId(null);
+            setToast(
+              e instanceof Error ?
+                e.message
+              : "No se pudo fijar la nueva versión como la activa."
+            );
+          }
+        }
         setAssistantReply(
           res.reply?.trim() ?
             res.reply
@@ -329,6 +391,7 @@ export function NarrativeWorkspace({
       agentMode,
       editorText,
       projectId,
+      persistProject,
       refs,
       selectionEnd,
       selectionStart,
@@ -567,6 +630,9 @@ export function NarrativeWorkspace({
         }}
         reply={assistantReply}
         busy={assistantBusy}
+        variationUndoable={revertMainVersionId !== null}
+        onUndoVariation={() => void undoLastAgentVariation()}
+        undoBusy={undoBusy}
       />
       <VariationOverlay
         open={overlay === "variation"}

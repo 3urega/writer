@@ -40,6 +40,37 @@ function excerptAroundSelection(
   return clip(text.slice(Math.max(0, text.length - radius * 2)), CAP.excerpt);
 }
 
+function sessionHasTextSelection(session: NarrativeSession): boolean {
+  const t = session.chapterText ?? "";
+  const a = session.selectionStart;
+  const b = session.selectionEnd;
+  return (
+    a !== undefined &&
+    b !== undefined &&
+    b > a &&
+    a >= 0 &&
+    b <= t.length
+  );
+}
+
+function formatPersistSelectionAddendum(session: NarrativeSession): string {
+  const full = session.chapterText ?? "";
+  const a = session.selectionStart!;
+  const b = session.selectionEnd!;
+  return [
+    "",
+    "## Persistencia en el capítulo (obligatorio si reescribes la selección)",
+    `Hay una selección en el capítulo: índices UTF-16 [${a}, ${b}) en el texto enviado en sesión (${full.length} caracteres).`,
+    "1) Llama a rewrite_fragment con fragment_text = texto en ese intervalo, context_before / context_after del capítulo, e instructions según el autor.",
+    "2) Inmediatamente después, llama a create_version con:",
+    `   - project_id = "${session.projectId}"`,
+    `   - chapter_id = "${session.chapterId}"`,
+    `   - base_version_id = "${session.versionId}"`,
+    "   - new_content = el texto COMPLETO del capítulo igual que ahora pero sustituyendo el intervalo seleccionado por rewritten_text.",
+    "No omitas create_version si el usuario pidió cambiar el fragmento seleccionado: sin ello el editor no guarda el resultado.",
+  ].join("\n");
+}
+
 function formatMemorySnapshot(ctx: StoryContext): string {
   const lines: string[] = [];
   if (ctx.tone.label || ctx.tone.pacing) {
@@ -124,6 +155,9 @@ export function buildNarrativeUserMessage(input: {
     "## Referencias",
     clip(refs, CAP.refsLine),
     intentHint,
+    ...(sessionHasTextSelection(session) ?
+      [formatPersistSelectionAddendum(session)]
+    : []),
   ];
 
   return { userMessage: blocks.join("\n") };
