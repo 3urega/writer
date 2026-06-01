@@ -377,6 +377,73 @@ export function replaceChapter(project: Project, nextChapter: Chapter): Project 
   };
 }
 
+export type CommitEditorContentInput = {
+  project: Project;
+  activeChapterId: string;
+  activeVersionId: string;
+  activeBranchId?: string | null;
+  content: string;
+  createdBy?: VersionCreatedBy;
+};
+
+export type CommitEditorContentResult = {
+  project: Project;
+  activeVersionId: string;
+  activeBranchId: string | null;
+  editorContent: string;
+};
+
+/**
+ * Persiste `content` como versión del capítulo (amend si aplica, si no nueva snapshot).
+ * Usado por Guardar manual y por reescritura IA (VS3).
+ */
+export function commitEditorContentAsNewVersion(
+  input: CommitEditorContentInput
+): CommitEditorContentResult | null {
+  const ch = findChapter(input.project, input.activeChapterId);
+  if (!ch) return null;
+  const fromVer = findVersion(ch, input.activeVersionId);
+  if (!fromVer) return null;
+  const mainBr = findMainBranchForChapter(ch);
+  const bid =
+    input.activeBranchId ?? fromVer.branchId ?? mainBr?.id ?? null;
+  if (bid == null) return null;
+
+  const amendedChapter = amendLoneEmptyBranchTip(
+    ch,
+    input.activeVersionId,
+    bid,
+    input.content
+  );
+  if (amendedChapter) {
+    return {
+      project: replaceChapter(input.project, amendedChapter),
+      activeVersionId: input.activeVersionId,
+      activeBranchId: bid,
+      editorContent: input.content,
+    };
+  }
+
+  const newVersion = createVersionSnapshot({
+    content: input.content,
+    parentVersionId: input.activeVersionId,
+    createdBy: input.createdBy ?? "user",
+    branchId: bid,
+    metadata:
+      input.createdBy === "agent" ? { aiGenerated: true } : null,
+  });
+  const { chapter: nextChapter, newVersionId } = saveNewVersionInChapter(
+    ch,
+    newVersion
+  );
+  return {
+    project: replaceChapter(input.project, nextChapter),
+    activeVersionId: newVersionId,
+    activeBranchId: bid,
+    editorContent: newVersion.content,
+  };
+}
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);
 }

@@ -13,17 +13,17 @@ All commands require `--repo CodelyTV/agentic_programming-course`.
 
 List open issues:
 ```bash
-gh issue list --repo CodelyTV/agentic_programming-course
+gh issue list --repo 3urega/writer
 ```
 
 View a specific issue:
 ```bash
-gh issue view <number> --repo CodelyTV/agentic_programming-course
+gh issue view <number> --repo 3urega/writer
 ```
 
 Close an issue:
 ```bash
-gh issue close <number> --repo CodelyTV/agentic_programming-course
+gh issue close <number> --repo 3urega/writer
 ```
 
 ## Behavior
@@ -44,5 +44,5 @@ List all open issues and show a summary to the user.
 
 Close the issue with a comment summarizing what was done:
 ```bash
-gh issue close <number> --repo CodelyTV/agentic_programming-course --comment "Done: <brief summary>"
+gh issue close <number> --repo 3urega/writer --comment "Done: <brief summary>"
 ```

@@ -29,10 +29,7 @@ export function VariationSidebar({
   }, [branches, q]);
 
   return (
-    <aside className="flex min-h-0 max-h-[40vh] flex-col gap-2 overflow-hidden rounded-xl border border-cf-border bg-cf-surface/80 p-3 lg:max-h-[calc(100vh-11rem)]">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-cf-text-muted">
-        Líneas narrativas
-      </h2>
+    <div className="flex flex-col gap-2">
       <div className="flex gap-1">
         <input
           type="search"
@@ -51,7 +48,7 @@ export function VariationSidebar({
           +
         </button>
       </div>
-      <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto text-sm">
+      <ul className="max-h-[min(36vh,280px)] space-y-1 overflow-y-auto text-sm">
         {filtered.map((b) => {
           const active = b.id === activeBranchId;
           const official = b.id === mainBranchId;
@@ -69,7 +66,11 @@ export function VariationSidebar({
               >
                 <div className="flex items-start justify-between gap-2">
                   <span className="line-clamp-2 font-medium">
-                    {official ? <span className="mr-1 text-cf-warning" title="Línea principal">👑 </span> : null}
+                    {official ? (
+                      <span className="mr-1 text-cf-warning" title="Línea principal">
+                        👑{" "}
+                      </span>
+                    ) : null}
                     {b.name}
                   </span>
                   <span className="shrink-0 text-[10px] text-cf-text-muted">v.{n}</span>
@@ -91,9 +92,6 @@ export function VariationSidebar({
       >
         + Nueva variación
       </button>
-      <p className="text-[10px] text-cf-text-muted/70">
-        <kbd className="rounded border border-cf-border px-1">?</kbd> Atajos (próximamente)
-      </p>
-    </aside>
+    </div>
   );
 }

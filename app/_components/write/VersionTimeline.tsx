@@ -22,10 +22,7 @@ export function VersionTimeline({
       new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
   );
   return (
-    <div className="flex max-h-[min(50vh,360px)] flex-col gap-2 overflow-y-auto">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-cf-text-muted">
-        Historial · esta línea
-      </h2>
+    <div className="flex flex-col gap-2 overflow-y-auto">
       <ul className="space-y-2">
         {sorted.map((v, i) => {
           const isMain = v.id === mainVersionId;

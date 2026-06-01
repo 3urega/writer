@@ -23,6 +23,7 @@ type EditorHeaderProps = {
   onResetLocal: () => void;
   focusMode: boolean;
   onToggleFocus: () => void;
+  onOpenTools: () => void;
 };
 
 function formatShortTime(iso: string | null): string {
@@ -58,6 +59,7 @@ export function EditorHeader({
   onResetLocal,
   focusMode,
   onToggleFocus,
+  onOpenTools,
 }: EditorHeaderProps) {
   const syncFailed = Boolean(syncError);
   const serverOk =
@@ -145,6 +147,13 @@ export function EditorHeader({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+          <button
+            type="button"
+            onClick={onOpenTools}
+            className="rounded-lg border border-cf-border px-3 py-2 text-sm text-cf-text-muted hover:bg-cf-surface-hover lg:hidden"
+          >
+            Herramientas
+          </button>
           <button
             type="button"
             onClick={onToggleFocus}

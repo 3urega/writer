@@ -4,10 +4,7 @@ import type { Fragment } from "@/lib/domain/types";
 
 type FloatingSelectionToolbarProps = {
   fragment: Fragment | null;
-  /** Abre pestaña Mejorar y opcionalmente rellena mensaje */
   onImprove: () => void;
-  onRewrite: () => void;
-  onChangeTone: () => void;
   onCompare: () => void;
   onNewVariation: () => void;
 };
@@ -21,8 +18,6 @@ const btn =
 export function FloatingSelectionToolbar({
   fragment,
   onImprove,
-  onRewrite,
-  onChangeTone,
   onCompare,
   onNewVariation,
 }: FloatingSelectionToolbarProps) {
@@ -38,12 +33,6 @@ export function FloatingSelectionToolbar({
       </span>
       <button type="button" className={btn} onClick={onImprove}>
         Mejorar
-      </button>
-      <button type="button" className={btn} onClick={onRewrite}>
-        Reescribir
-      </button>
-      <button type="button" className={btn} onClick={onChangeTone}>
-        Cambiar tono
       </button>
       <button type="button" className={btn} onClick={onCompare}>
         Comparar

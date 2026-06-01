@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ChapterNotesPanel } from "@/app/_components/write/ChapterNotesPanel";
-import { ContextPanel } from "@/app/_components/write/ContextPanel";
+import { ContextDetailsPanel } from "@/app/_components/write/ContextDetailsPanel";
 import { EditorHeader } from "@/app/_components/write/EditorHeader";
 import { EditorMarkdownToolbar } from "@/app/_components/write/EditorMarkdownToolbar";
 import { EditorStatsFooter } from "@/app/_components/write/EditorStatsFooter";
@@ -12,17 +12,19 @@ import { ImprovePanel } from "@/app/_components/write/ImprovePanel";
 import { NarrativeCompareView } from "@/app/_components/write/NarrativeCompareView";
 import { NewVariationModal } from "@/app/_components/write/NewVariationModal";
 import { RestoreDraftDialog } from "@/app/_components/write/RestoreDraftDialog";
-import {
-  WorkspaceBottomPanel,
-  type WorkspaceTabId,
-} from "@/app/_components/write/WorkspaceBottomPanel";
 import { VariationSidebar } from "@/app/_components/write/VariationSidebar";
+import { VersionTimeline } from "@/app/_components/write/VersionTimeline";
+import {
+  WriteWorkspaceSidebar,
+  type SidebarSectionId,
+} from "@/app/_components/write/WriteWorkspaceSidebar";
 import { KnowledgeLibrary } from "@/app/_components/KnowledgeLibrary";
 import { splitIntoBlocks } from "@/lib/domain/blocks";
 import type { Fragment, Version } from "@/lib/domain/types";
 import {
   amendLoneEmptyBranchTip,
   clampSelectionRange,
+  commitEditorContentAsNewVersion,
   createIntentVariation,
   createMergedVersion,
   createVersionSnapshot,
@@ -132,15 +134,11 @@ export function ChapterEditor({
   const [syncError, setSyncError] = useState<string | null>(null);
   const lastPushedRef = useRef<string>("");
 
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTabId>("improve");
+  const [sidebarSection, setSidebarSection] = useState<SidebarSectionId | null>(
+    null
+  );
+  const [sidebarMobileOpen, setSidebarMobileOpen] = useState(false);
   const [variationModalOpen, setVariationModalOpen] = useState(false);
-  const [improvePanelNonce, setImprovePanelNonce] = useState(0);
-  const [improveInitialMessage, setImproveInitialMessage] = useState("");
-
-  const bumpImprovePanel = useCallback((initialMessage: string) => {
-    setImproveInitialMessage(initialMessage);
-    setImprovePanelNonce((n) => n + 1);
-  }, []);
 
   const [pendingRestore, setPendingRestore] = useState<
     import("@/lib/storage/draftStore").DraftRecord | null
@@ -673,60 +671,22 @@ export function ChapterEditor({
 
   const onSaveVersion = () => {
     setState((s) => {
-      const ch = findChapter(s.project, s.activeChapterId);
-      if (!ch) return s;
-      const fromVer = findVersion(ch, s.activeVersionId);
-      if (!fromVer) return s;
-      const mainBr = findMainBranchForChapter(ch);
-      const bid =
-        s.activeBranchId ?? fromVer?.branchId ?? mainBr?.id ?? null;
-      if (bid == null) return s;
-
-      const amendedChapter = amendLoneEmptyBranchTip(
-        ch,
-        s.activeVersionId,
-        bid,
-        s.editorContent
-      );
-      if (amendedChapter) {
-        void clearDraft({
-          projectId: s.project.id,
-          chapterId: s.activeChapterId,
-          branchId: s.activeBranchId ?? null,
-        });
-        restoreSettledKeyRef.current = "";
-        return {
-          ...s,
-          project: replaceChapter(s.project, amendedChapter),
-          activeVersionId: s.activeVersionId,
-          editorContent: s.editorContent,
-          activeBranchId: bid,
-        };
-      }
-
-      const newVersion = createVersionSnapshot({
+      const committed = commitEditorContentAsNewVersion({
+        project: s.project,
+        activeChapterId: s.activeChapterId,
+        activeVersionId: s.activeVersionId,
+        activeBranchId: s.activeBranchId,
         content: s.editorContent,
-        parentVersionId: s.activeVersionId,
         createdBy: "user",
-        branchId: bid,
       });
-      const { chapter: nextChapter, newVersionId } = saveNewVersionInChapter(
-        ch,
-        newVersion
-      );
+      if (!committed) return s;
       void clearDraft({
         projectId: s.project.id,
         chapterId: s.activeChapterId,
         branchId: s.activeBranchId ?? null,
       });
       restoreSettledKeyRef.current = "";
-      return {
-        ...s,
-        project: replaceChapter(s.project, nextChapter),
-        activeVersionId: newVersionId,
-        editorContent: newVersion.content,
-        activeBranchId: bid,
-      };
+      return { ...s, ...committed };
     });
   };
 
@@ -845,28 +805,20 @@ export function ChapterEditor({
     });
   }, []);
 
-  const onWorkspaceTabChange = useCallback(
-    (t: WorkspaceTabId) => {
-      setWorkspaceTab(t);
-      if (t === "compare") {
+  const openSidebarSection = useCallback(
+    (id: SidebarSectionId) => {
+      setSidebarSection(id);
+      setSidebarMobileOpen(true);
+      if (id === "compare") {
         ensureComparePair();
       }
     },
     [ensureComparePair]
   );
 
-  const onApplySuggestedText = useCallback((text: string) => {
-    const t = text.trim();
-    if (!t) return;
-    setLastEditAt(new Date().toISOString());
-    setState((s) => ({
-      ...s,
-      editorContent:
-        s.editorContent.trim() ?
-          `${s.editorContent.trim()}\n\n${t}`
-        : t,
-    }));
-  }, []);
+  const openImprove = useCallback(() => {
+    openSidebarSection("improve");
+  }, [openSidebarSection]);
 
   const onMerge = (mode: "keepA" | "keepB" | "smart") => {
     if (!vA || !vB || !activeChapter) return;
@@ -928,18 +880,296 @@ export function ChapterEditor({
     })();
   };
 
-  const openImprove = useCallback(() => {
-    setWorkspaceTab("improve");
+
+  const onApplyFragmentRewrite = useCallback((newFullDocumentText: string) => {
+    setLastEditAt(new Date().toISOString());
+    setState((s) => {
+      const committed = commitEditorContentAsNewVersion({
+        project: s.project,
+        activeChapterId: s.activeChapterId,
+        activeVersionId: s.activeVersionId,
+        activeBranchId: s.activeBranchId,
+        content: newFullDocumentText,
+        createdBy: "agent",
+      });
+      if (!committed) return s;
+      void clearDraft({
+        projectId: s.project.id,
+        chapterId: s.activeChapterId,
+        branchId: s.activeBranchId ?? null,
+      });
+      restoreSettledKeyRef.current = "";
+      return { ...s, ...committed };
+    });
+    setFragment(null);
   }, []);
+
+  const blocks = showBlocks ? splitIntoBlocks(state.editorContent) : [];
+
+  const sidebarSections = useMemo(
+    () => {
+      if (!activeChapter) return [];
+      return [
+      {
+        id: "lines" as const,
+        title: "Líneas narrativas",
+        badge: String(branches.length),
+        content: (
+          <VariationSidebar
+            branches={branches}
+            activeBranchId={state.activeBranchId}
+            mainBranchId={mainBranchIdForSidebar}
+            versionCountByBranchId={versionCountByBranchId}
+            onSelectBranch={onSelectBranch}
+            onOpenNewVariation={() => setVariationModalOpen(true)}
+          />
+        ),
+      },
+      {
+        id: "versions" as const,
+        title: "Versiones",
+        badge: String(versionsInActiveBranch.length),
+        content: (
+          <VersionTimeline
+            versions={versionsInActiveBranch}
+            activeVersionId={state.activeVersionId}
+            mainVersionId={mainVersionId}
+            onSelectVersion={onSelectVersion}
+            onSetOfficial={onSetOfficial}
+            formatVersionLabel={formatVersionLabel}
+          />
+        ),
+      },
+      {
+        id: "details" as const,
+        title: "Detalles",
+        content: (
+          <ContextDetailsPanel
+            fragment={fragment}
+            activeDocsSummary="Activa PDFs en Conocimiento; solo los que estén en ON influyen en la IA."
+            onOpenKnowledgeTab={() => openSidebarSection("knowledge")}
+            chapterId={state.activeChapterId}
+            chapterTitle={activeChapter.title ?? ""}
+            onChapterTitleBlur={onChapterTitleBlur}
+          />
+        ),
+      },
+      {
+        id: "compare" as const,
+        title: "Comparar",
+        content: (
+          <div className="space-y-3">
+            <p className="text-xs text-cf-text-muted">
+              Compara dos versiones de la <strong className="text-cf-text">línea activa</strong>.
+              Las acciones crean una nueva versión en la rama actual.
+            </p>
+            {!isOnMainBranch ? (
+              <div className="rounded-xl border border-cf-primary/30 bg-cf-primary-soft/40 p-3 text-sm text-cf-text">
+                <p className="font-medium text-cf-primary">Llevar esto a la línea principal</p>
+                <p className="mt-1 text-xs leading-relaxed text-cf-text-muted">
+                  Graba el texto del editor como nueva versión en la rama principal y déjala como
+                  referencia oficial.
+                </p>
+                <button
+                  type="button"
+                  onClick={onAdoptToMainLine}
+                  className="mt-2 rounded-lg bg-cf-primary px-3 py-2 text-xs font-medium text-white"
+                >
+                  Adoptar en línea principal
+                </button>
+              </div>
+            ) : null}
+            <div className="flex flex-col gap-2 text-xs">
+              {state.compareVersionA === state.compareVersionB &&
+              versionsChronological.length > 1 ? (
+                <p className="text-[11px] text-cf-warning">
+                  A y B coinciden; elige otra versión en uno de los desplegables.
+                </p>
+              ) : null}
+              {versionsChronological.length < 2 ? (
+                <p className="text-[11px] text-cf-text-muted">
+                  Necesitas al menos dos versiones en esta línea para comparar.
+                </p>
+              ) : null}
+              <div>
+                <span className="mb-0.5 block text-cf-text-muted">Versión A (referencia)</span>
+                <select
+                  value={state.compareVersionA ?? ""}
+                  onChange={(e) =>
+                    setState((s) => ({
+                      ...s,
+                      compareVersionA: e.target.value || null,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-cf-border bg-cf-bg px-2 py-1.5 text-cf-text"
+                >
+                  {versionsChronological.map((v, i) => {
+                    const isMain = v.id === mainVersionId;
+                    const branchLabel =
+                      v.branchId && activeChapter ?
+                        findBranch(activeChapter, v.branchId)?.name ?? null
+                      : null;
+                    return (
+                      <option key={v.id} value={v.id}>
+                        {formatCompareVersionSelectLabel(v, i, isMain, branchLabel)}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              <div>
+                <span className="mb-0.5 block text-cf-text-muted">Versión B (actual)</span>
+                <select
+                  value={state.compareVersionB ?? ""}
+                  onChange={(e) =>
+                    setState((s) => ({
+                      ...s,
+                      compareVersionB: e.target.value || null,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-cf-border bg-cf-bg px-2 py-1.5 text-cf-text"
+                >
+                  {versionsChronological.map((v, i) => {
+                    const isMain = v.id === mainVersionId;
+                    const branchLabel =
+                      v.branchId && activeChapter ?
+                        findBranch(activeChapter, v.branchId)?.name ?? null
+                      : null;
+                    return (
+                      <option key={v.id} value={v.id}>
+                        {formatCompareVersionSelectLabel(v, i, isMain, branchLabel)}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            </div>
+            {hints && state.compareVersionA && state.compareVersionB ? (
+              <div className="rounded-xl border border-cf-border bg-cf-bg/40 p-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-cf-text-muted">
+                  Ideas
+                </h3>
+                <ul className="mt-2 list-inside list-disc space-y-1 text-xs text-cf-text">
+                  {hints.notes.map((n, i) => (
+                    <li key={i}>{n}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {state.compareVersionA && state.compareVersionB ? (
+              <NarrativeCompareView
+                labelOriginal="Versión A (referencia)"
+                labelRevision="Versión B (actual)"
+                textOriginal={textCompareA}
+                textRevision={textCompareB}
+              />
+            ) : null}
+            {vA && vB ? (
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => onMerge("keepA")}
+                  className="rounded-lg bg-emerald-800/90 px-3 py-2 text-sm text-white"
+                >
+                  Conservar A (referencia)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onMerge("keepB")}
+                  className="rounded-lg bg-rose-900/80 px-3 py-2 text-sm text-white"
+                >
+                  Conservar B (actual)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onMerge("smart")}
+                  className="rounded-lg border border-cf-primary px-3 py-2 text-sm text-cf-primary"
+                >
+                  Combinar ambas (nueva versión)
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        id: "improve" as const,
+        title: "Mejorar con IA",
+        content: (
+          <ImprovePanel
+            projectId={remoteProjectId}
+            activeVersionId={state.activeVersionId}
+            fullDocumentText={state.editorContent}
+            fragment={fragment}
+            onApplyFragmentRewrite={onApplyFragmentRewrite}
+          />
+        ),
+      },
+      {
+        id: "knowledge" as const,
+        title: "Conocimiento",
+        content: (
+          <div className="space-y-2">
+            <p className="text-xs text-cf-text-muted">
+              Solo los documentos activos influyen en la IA (reescritura y búsqueda contextual).
+            </p>
+            <KnowledgeLibrary projectId={remoteProjectId} />
+          </div>
+        ),
+      },
+      {
+        id: "notes" as const,
+        title: "Notas",
+        content:
+          remoteProjectId ?
+            <ChapterNotesPanel
+              key={`${remoteProjectId}:${state.activeChapterId}`}
+              projectId={remoteProjectId}
+              chapterId={state.activeChapterId}
+            />
+          : <p className="text-sm text-cf-text-muted">Conecta el proyecto para notas locales.</p>,
+      },
+    ];
+    },
+    [
+      branches,
+      state.activeBranchId,
+      state.activeChapterId,
+      state.activeVersionId,
+      state.compareVersionA,
+      state.compareVersionB,
+      state.editorContent,
+      mainBranchIdForSidebar,
+      versionCountByBranchId,
+      onSelectBranch,
+      versionsInActiveBranch,
+      mainVersionId,
+      onSelectVersion,
+      onSetOfficial,
+      fragment,
+      openSidebarSection,
+      onChapterTitleBlur,
+      activeChapter,
+      isOnMainBranch,
+      onAdoptToMainLine,
+      versionsChronological,
+      hints,
+      textCompareA,
+      textCompareB,
+      vA,
+      vB,
+      remoteProjectId,
+      onApplyFragmentRewrite,
+      onMerge,
+    ]
+  );
 
   if (!activeChapter) {
     return <p className="p-4 text-cf-text-muted">No hay capítulo activo.</p>;
   }
 
-  const blocks = showBlocks ? splitIntoBlocks(state.editorContent) : [];
-
   return (
-    <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 px-3 pb-20 pt-2 sm:px-4 sm:pb-6 lg:max-w-[min(96rem,100%)] lg:px-6">
+    <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 px-3 pb-6 pt-2 sm:px-4 lg:max-w-[min(96rem,100%)] lg:px-6">
       {remoteError ? (
         <p className="rounded-lg border border-cf-warning/40 bg-cf-warning/10 p-2 text-sm text-cf-warning">
           Servidor: {remoteError} (puedes seguir con el borrador local.)
@@ -977,54 +1207,29 @@ export function ChapterEditor({
         onResetLocal={onResetLocal}
         focusMode={focusMode}
         onToggleFocus={() => setFocusMode((f) => !f)}
+        onOpenTools={() => setSidebarMobileOpen(true)}
       />
-
-      <p className="text-xs text-cf-text-muted">
-        Lo que ves en el editor es <strong className="text-cf-text">borrador</strong>: forma parte del libro en
-        cuanto pulsas <strong className="text-cf-text">Guardar</strong> (pasa al{" "}
-        <strong className="text-cf-text">historial del capítulo</strong>). La primera vez que guardas texto en un
-        capítulo nuevo, se rellena la primera entrada del historial (no se deja una versión vacía colgando). El
-        rescate en navegador no sustituye a Guardar. «Sincronizado» indica que el proyecto llegó al servidor.
-      </p>
 
       <div
         className={`grid min-h-0 flex-1 grid-cols-1 gap-3 lg:gap-4 ${
-          focusMode ? "lg:grid-cols-1" : "lg:grid-cols-[minmax(260px,280px)_minmax(0,1fr)_minmax(300px,340px)]"
+          focusMode ? "lg:grid-cols-1" : "lg:grid-cols-[minmax(260px,280px)_minmax(0,1fr)]"
         }`}
       >
         {focusMode ? null : (
-          <VariationSidebar
-            branches={branches}
-            activeBranchId={state.activeBranchId}
-            mainBranchId={mainBranchIdForSidebar}
-            versionCountByBranchId={versionCountByBranchId}
-            onSelectBranch={onSelectBranch}
-            onOpenNewVariation={() => setVariationModalOpen(true)}
+          <WriteWorkspaceSidebar
+            openSection={sidebarSection}
+            onOpenSection={setSidebarSection}
+            mobileOpen={sidebarMobileOpen}
+            onMobileOpenChange={setSidebarMobileOpen}
+            sections={sidebarSections}
           />
         )}
 
         <div className="flex min-h-[min(48vh,440px)] min-w-0 flex-col gap-2 lg:min-h-[min(52vh,560px)]">
           <FloatingSelectionToolbar
             fragment={fragment}
-            onImprove={() => {
-              setWorkspaceTab("improve");
-              bumpImprovePanel(
-                "Mejora el fragmento seleccionado manteniendo la intención y la voz del narrador."
-              );
-            }}
-            onRewrite={() => {
-              setWorkspaceTab("improve");
-              bumpImprovePanel(
-                "Reescribe el fragmento seleccionado con mayor precisión y claridad, sin alargar innecesariamente."
-              );
-            }}
-            onChangeTone={() => {
-              setWorkspaceTab("improve");
-              bumpImprovePanel(
-                "Ajusta el tono del fragmento seleccionado (más contenido, más cercano al lector) sin cambiar los hechos."
-              );
-            }}
-            onCompare={() => onWorkspaceTabChange("compare")}
+            onImprove={openImprove}
+            onCompare={() => openSidebarSection("compare")}
             onNewVariation={() => setVariationModalOpen(true)}
           />
 
@@ -1115,213 +1320,7 @@ export function ChapterEditor({
             </div>
           ) : null}
         </div>
-
-        {focusMode ? null : (
-          <ContextPanel
-            versions={versionsInActiveBranch}
-            activeVersionId={state.activeVersionId}
-            mainVersionId={mainVersionId}
-            onSelectVersion={onSelectVersion}
-            onSetOfficial={onSetOfficial}
-            formatVersionLabel={formatVersionLabel}
-            fragment={fragment}
-            activeDocsSummary="Activa PDFs en la pestaña Conocimiento (inferior); solo los que estén en ON influyen en la IA."
-            onOpenKnowledgeTab={() => setWorkspaceTab("knowledge")}
-            chapterId={state.activeChapterId}
-            chapterTitle={activeChapter.title ?? ""}
-            onChapterTitleBlur={onChapterTitleBlur}
-          />
-        )}
       </div>
-
-      <WorkspaceBottomPanel
-        active={workspaceTab}
-        onTabChange={onWorkspaceTabChange}
-        compare={
-          <div className="space-y-4">
-            <p className="text-sm text-cf-text-muted">
-              Compara dos versiones en paralelo. Por defecto:{" "}
-              <strong className="text-cf-text">oficial</strong> frente a la versión{" "}
-              <strong className="text-cf-text">activa</strong> en tu sesión. Las acciones inferiores
-              crean una <strong className="text-cf-text">nueva versión</strong> en la rama actual.
-            </p>
-            {!isOnMainBranch ? (
-              <div className="rounded-xl border border-cf-primary/30 bg-cf-primary-soft/40 p-3 text-sm text-cf-text">
-                <p className="font-medium text-cf-primary">Llevar esto a la línea principal</p>
-                <p className="mt-1 text-xs leading-relaxed text-cf-text-muted">
-                  Si esta variación ya es la dirección que quieres conservar, puedes grabar el texto
-                  del editor como nueva versión en la <strong className="text-cf-text">rama principal</strong>{" "}
-                  y dejarla como referencia oficial del capítulo.
-                </p>
-                <button
-                  type="button"
-                  onClick={onAdoptToMainLine}
-                  className="mt-2 rounded-lg bg-cf-primary px-3 py-2 text-xs font-medium text-white"
-                >
-                  Adoptar en línea principal
-                </button>
-              </div>
-            ) : null}
-            <div className="flex flex-wrap items-end gap-3 text-xs">
-              {state.compareVersionA === state.compareVersionB &&
-              versionsChronological.length > 1 ? (
-                <p className="w-full text-[11px] text-cf-warning">
-                  A y B coinciden; elige otra versión en uno de los desplegables para comparar.
-                </p>
-              ) : null}
-              {versionsChronological.length < 2 ? (
-                <p className="w-full text-[11px] text-cf-text-muted">
-                  Necesitas al menos dos versiones en el capítulo para comparar textos distintos.
-                </p>
-              ) : null}
-              <div>
-                <span className="mb-0.5 block text-cf-text-muted">
-                  Versión A (referencia)
-                </span>
-                <select
-                  value={state.compareVersionA ?? ""}
-                  onChange={(e) =>
-                    setState((s) => ({
-                      ...s,
-                      compareVersionA: e.target.value || null,
-                    }))
-                  }
-                  className="max-w-full min-w-[min(100%,28rem)] rounded-lg border border-cf-border bg-cf-bg px-2 py-1.5 text-cf-text"
-                >
-                  {versionsChronological.map((v, i) => {
-                    const isMain = v.id === mainVersionId;
-                    const branchLabel =
-                      v.branchId && activeChapter ?
-                        findBranch(activeChapter, v.branchId)?.name ?? null
-                      : null;
-                    return (
-                      <option key={v.id} value={v.id}>
-                        {formatCompareVersionSelectLabel(
-                          v,
-                          i,
-                          isMain,
-                          branchLabel
-                        )}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-              <div>
-                <span className="mb-0.5 block text-cf-text-muted">
-                  Versión B (actual)
-                </span>
-                <select
-                  value={state.compareVersionB ?? ""}
-                  onChange={(e) =>
-                    setState((s) => ({
-                      ...s,
-                      compareVersionB: e.target.value || null,
-                    }))
-                  }
-                  className="max-w-full min-w-[min(100%,28rem)] rounded-lg border border-cf-border bg-cf-bg px-2 py-1.5 text-cf-text"
-                >
-                  {versionsChronological.map((v, i) => {
-                    const isMain = v.id === mainVersionId;
-                    const branchLabel =
-                      v.branchId && activeChapter ?
-                        findBranch(activeChapter, v.branchId)?.name ?? null
-                      : null;
-                    return (
-                      <option key={v.id} value={v.id}>
-                        {formatCompareVersionSelectLabel(
-                          v,
-                          i,
-                          isMain,
-                          branchLabel
-                        )}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-            </div>
-            {hints && state.compareVersionA && state.compareVersionB ? (
-              <div className="rounded-xl border border-cf-border bg-cf-bg/40 p-3">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-cf-text-muted">
-                  Ideas
-                </h3>
-                <p className="mt-1 text-[11px] text-cf-text-muted">
-                  Pistas automáticas (no sustituyen tu lectura); úsalas como checklist breve.
-                </p>
-                <ul className="mt-2 list-inside list-disc space-y-1 text-xs text-cf-text">
-                  {hints.notes.map((n, i) => (
-                    <li key={i}>{n}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            {state.compareVersionA && state.compareVersionB ? (
-              <NarrativeCompareView
-                labelOriginal="Versión A (referencia)"
-                labelRevision="Versión B (actual)"
-                textOriginal={textCompareA}
-                textRevision={textCompareB}
-              />
-            ) : null}
-            {vA && vB ? (
-              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => onMerge("keepA")}
-                  className="rounded-lg bg-emerald-800/90 px-3 py-2 text-sm text-white"
-                >
-                  Conservar A (referencia)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onMerge("keepB")}
-                  className="rounded-lg bg-rose-900/80 px-3 py-2 text-sm text-white"
-                >
-                  Conservar B (actual)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onMerge("smart")}
-                  className="rounded-lg border border-cf-primary px-3 py-2 text-sm text-cf-primary"
-                >
-                  Combinar ambas (nueva versión)
-                </button>
-              </div>
-            ) : null}
-          </div>
-        }
-        improve={
-          <ImprovePanel
-            key={improvePanelNonce}
-            projectId={remoteProjectId}
-            activeVersionId={state.activeVersionId}
-            fullDocumentText={state.editorContent}
-            fragment={fragment}
-            onRefreshProjectFromServer={refreshProjectFromServer}
-            onApplySuggestedText={onApplySuggestedText}
-            initialMessage={improveInitialMessage}
-          />
-        }
-        knowledge={
-          <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-cf-text">Fuentes de conocimiento</h3>
-            <p className="text-xs text-cf-text-muted">
-              Solo los documentos activos influyen en la IA (reescritura y búsqueda contextual).
-            </p>
-            <KnowledgeLibrary projectId={remoteProjectId} />
-          </div>
-        }
-        notes={
-          remoteProjectId ?
-            <ChapterNotesPanel
-              key={`${remoteProjectId}:${state.activeChapterId}`}
-              projectId={remoteProjectId}
-              chapterId={state.activeChapterId}
-            />
-          : <p className="text-sm text-cf-text-muted">Conecta el proyecto para guardar notas locales por capítulo.</p>
-        }
-      />
 
       <NewVariationModal
         open={variationModalOpen}
