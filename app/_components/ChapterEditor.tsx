@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ChapterNotesPanel } from "@/app/_components/write/ChapterNotesPanel";
+import { ChapterNavPanel } from "@/app/_components/write/ChapterNavPanel";
 import { ContextDetailsPanel } from "@/app/_components/write/ContextDetailsPanel";
 import { EditorHeader } from "@/app/_components/write/EditorHeader";
 import { EditorMarkdownToolbar } from "@/app/_components/write/EditorMarkdownToolbar";
@@ -20,7 +21,7 @@ import {
 } from "@/app/_components/write/WriteWorkspaceSidebar";
 import { KnowledgeLibrary } from "@/app/_components/KnowledgeLibrary";
 import { splitIntoBlocks } from "@/lib/domain/blocks";
-import type { Fragment, Version } from "@/lib/domain/types";
+import type { Chapter, Fragment, Version } from "@/lib/domain/types";
 import {
   amendLoneEmptyBranchTip,
   clampSelectionRange,
@@ -32,6 +33,7 @@ import {
   findChapter,
   findMainBranchForChapter,
   findVersion,
+  insertChapterAtIndex,
   replaceChapter,
   saveNewVersionInChapter,
   setChapterMainVersion,
@@ -39,7 +41,6 @@ import {
 import { narrativePairHints } from "@/lib/narrative/diffIntelligence";
 import {
   clearDraft,
-  clearDraftsForProject,
   loadDraft,
   saveDraft,
 } from "@/lib/storage/draftStore";
@@ -105,6 +106,26 @@ function formatCompareVersionSelectLabel(
   return `${crown}#${chronologyIndex + 1} · «${preview}» · ${branch}${who} · ${when} UTC`;
 }
 
+function editorFocusForChapter(ch: Chapter): {
+  activeVersionId: string;
+  activeBranchId: string | null;
+  editorContent: string;
+} | null {
+  const sorted = [...ch.versions].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+  const mainId = ch.mainVersionId;
+  const mainV =
+    (mainId && ch.versions.find((v) => v.id === mainId)) ?? sorted[0];
+  const mainBr = findMainBranchForChapter(ch);
+  if (!mainV) return null;
+  return {
+    activeVersionId: mainV.id,
+    activeBranchId: mainV.branchId ?? mainBr?.id ?? null,
+    editorContent: mainV.content,
+  };
+}
+
 const SYNC_DEBOUNCE_MS = 1500;
 const DRAFT_DEBOUNCE_MS = 450;
 
@@ -144,7 +165,6 @@ export function ChapterEditor({
     import("@/lib/storage/draftStore").DraftRecord | null
   >(null);
   const restoreSettledKeyRef = useRef<string>("");
-  const [focusMode, setFocusMode] = useState(false);
   const [lastLocalSaveAt, setLastLocalSaveAt] = useState<string | null>(null);
   const [lastEditAt, setLastEditAt] = useState<string | null>(null);
 
@@ -583,24 +603,46 @@ export function ChapterEditor({
     setPendingRestore(null);
     const ch = findChapter(state.project, chapterId);
     if (!ch) return;
-    const sorted = [...ch.versions].sort(
-      (a, b) =>
-        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    );
-    const mainId = ch.mainVersionId;
-    const mainV =
-      (mainId && ch.versions.find((v) => v.id === mainId)) ?? sorted[0];
-    const mainBr = findMainBranchForChapter(ch);
-    if (!mainV) return;
+    const focus = editorFocusForChapter(ch);
+    if (!focus) return;
     setState((s) => ({
       ...s,
       activeChapterId: chapterId,
-      activeVersionId: mainV.id,
-      activeBranchId: mainV.branchId ?? mainBr?.id ?? null,
-      editorContent: mainV.content,
+      activeVersionId: focus.activeVersionId,
+      activeBranchId: focus.activeBranchId,
+      editorContent: focus.editorContent,
       compareVersionA: null,
       compareVersionB: null,
     }));
+    setFragment(null);
+    restoreSettledKeyRef.current = "";
+  };
+
+  const onInsertChapterAtIndex = (index: number) => {
+    if (!confirmLoseDirty()) return;
+    void clearDraft({
+      projectId: state.project.id,
+      chapterId: state.activeChapterId,
+      branchId: state.activeBranchId ?? null,
+    });
+    setPendingRestore(null);
+    setState((s) => {
+      const { project, newChapterId } = insertChapterAtIndex(s.project, index);
+      const ch = findChapter(project, newChapterId);
+      if (!ch) return s;
+      const focus = editorFocusForChapter(ch);
+      if (!focus) return { ...s, project };
+      return {
+        ...s,
+        project,
+        activeChapterId: newChapterId,
+        activeVersionId: focus.activeVersionId,
+        activeBranchId: focus.activeBranchId,
+        editorContent: focus.editorContent,
+        compareVersionA: null,
+        compareVersionB: null,
+      };
+    });
     setFragment(null);
     restoreSettledKeyRef.current = "";
   };
@@ -820,6 +862,10 @@ export function ChapterEditor({
     openSidebarSection("improve");
   }, [openSidebarSection]);
 
+  const openChaptersPanel = useCallback(() => {
+    openSidebarSection("chapters");
+  }, [openSidebarSection]);
+
   const onMerge = (mode: "keepA" | "keepB" | "smart") => {
     if (!vA || !vB || !activeChapter) return;
     const merged = createMergedVersion(vA, vB, mode, {});
@@ -841,43 +887,6 @@ export function ChapterEditor({
         viewMode: "edit",
       };
     });
-  };
-
-  const onResetLocal = () => {
-    if (
-      !confirm(
-        "Borrar datos locales, desvincular el proyecto remoto y crear uno nuevo en el servidor?"
-      )
-    ) {
-      return;
-    }
-    const pid = state.project.id;
-    void clearDraftsForProject(pid);
-    localProjectStore.clear();
-    clearStoredRemoteProjectId();
-    setFragment(null);
-    setRemoteError(null);
-    setSyncError(null);
-    restoreSettledKeyRef.current = "";
-    (async () => {
-      setRemoteLoading(true);
-      try {
-        const newId = await createProjectOnServer();
-        setStoredRemoteProjectId(newId);
-        setRemoteProjectId(newId);
-        const p = await fetchProjectFromServer(newId);
-        setState(projectStateFromRemoteProject(p));
-        lastPushedRef.current = JSON.stringify(p);
-      } catch (e) {
-        setRemoteError(
-          e instanceof Error ? e.message : "Error al reiniciar en servidor"
-        );
-        setState(getDefaultProjectState());
-        setRemoteProjectId(null);
-      } finally {
-        setRemoteLoading(false);
-      }
-    })();
   };
 
 
@@ -910,6 +919,19 @@ export function ChapterEditor({
     () => {
       if (!activeChapter) return [];
       return [
+      {
+        id: "chapters" as const,
+        title: "Capítulos",
+        badge: String(state.project.chapters.length),
+        content: (
+          <ChapterNavPanel
+            chapters={chapterOptions}
+            activeChapterId={state.activeChapterId}
+            onSelectChapter={onChapterChange}
+            onInsertChapterAtIndex={onInsertChapterAtIndex}
+          />
+        ),
+      },
       {
         id: "lines" as const,
         title: "Líneas narrativas",
@@ -1150,6 +1172,9 @@ export function ChapterEditor({
       openSidebarSection,
       onChapterTitleBlur,
       activeChapter,
+      chapterOptions,
+      onChapterChange,
+      onInsertChapterAtIndex,
       isOnMainBranch,
       onAdoptToMainLine,
       versionsChronological,
@@ -1202,28 +1227,18 @@ export function ChapterEditor({
         syncing={syncing}
         syncError={syncError}
         onCreateVersion={onSaveVersion}
-        onImprove={openImprove}
-        onSync={onSync}
-        onResetLocal={onResetLocal}
-        focusMode={focusMode}
-        onToggleFocus={() => setFocusMode((f) => !f)}
         onOpenTools={() => setSidebarMobileOpen(true)}
+        onOpenChapters={openChaptersPanel}
       />
 
-      <div
-        className={`grid min-h-0 flex-1 grid-cols-1 gap-3 lg:gap-4 ${
-          focusMode ? "lg:grid-cols-1" : "lg:grid-cols-[minmax(260px,280px)_minmax(0,1fr)]"
-        }`}
-      >
-        {focusMode ? null : (
-          <WriteWorkspaceSidebar
-            openSection={sidebarSection}
-            onOpenSection={setSidebarSection}
-            mobileOpen={sidebarMobileOpen}
-            onMobileOpenChange={setSidebarMobileOpen}
-            sections={sidebarSections}
-          />
-        )}
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(260px,280px)_minmax(0,1fr)] lg:gap-4">
+        <WriteWorkspaceSidebar
+          openSection={sidebarSection}
+          onOpenSection={setSidebarSection}
+          mobileOpen={sidebarMobileOpen}
+          onMobileOpenChange={setSidebarMobileOpen}
+          sections={sidebarSections}
+        />
 
         <div className="flex min-h-[min(48vh,440px)] min-w-0 flex-col gap-2 lg:min-h-[min(52vh,560px)]">
           <FloatingSelectionToolbar

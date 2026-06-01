@@ -56,6 +56,16 @@ Si hay duda entre dos docs, léelos ambos antes de proseguir.
 
 ---
 
+# Issues y tareas que requieren fragmentación
+
+**Solo cuando la tarea lo exija** — p. ej. un issue de GitHub con varios criterios de aceptación, un flujo que cruza UI + dominio + API, o trabajo vía kanban (`/kanban-board`) — el agente debe **partir el plan en slices verticales** (VS1, VS2, …): entregas pequeñas de punta a punta, cada una con valor demostrable, no capas horizontales (“primero toda la API, luego toda la UI”).
+
+Detalle y plantilla: [`.agents/skills/kanban-board/SKILL.md`](.agents/skills/kanban-board/SKILL.md) (sección *Vertical slicing*).
+
+**No aplica** a arreglos puntuales, un solo archivo o cambios cuyo alcance ya cabe en una entrega única.
+
+---
+
 # Documentation
 
 - Todas las convenciones vivas están bajo [`docs/`](docs/).

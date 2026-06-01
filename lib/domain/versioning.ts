@@ -102,6 +102,69 @@ export function createInitialProject(name: string): {
   };
 }
 
+/**
+ * Capítulo vacío: rama main + versión inicial en blanco.
+ */
+export function createEmptyChapter(order: number, title = ""): Chapter {
+  const chapterId = uuidv4();
+  const mainBranchId = uuidv4();
+  const t = nowIso();
+  const mainBranch: Branch = {
+    id: mainBranchId,
+    chapterId,
+    slug: MAIN_SLUG,
+    name: MAIN_BRANCH_NAME,
+    description: null,
+    createdFromVersionId: null,
+    status: "active",
+    createdAt: t,
+  };
+  const firstVersion = createVersionSnapshot({
+    content: "",
+    parentVersionId: null,
+    createdBy: "user",
+    branchId: mainBranchId,
+    createdAt: t,
+  });
+  return {
+    id: chapterId,
+    order,
+    title,
+    mainVersionId: firstVersion.id,
+    branches: [mainBranch],
+    versions: [firstVersion],
+  };
+}
+
+export type InsertChapterAtIndexResult = {
+  project: Project;
+  newChapterId: string;
+};
+
+/**
+ * Inserta un capítulo vacío en la posición lógica `index` (0 = antes del primero,
+ * `chapters.length` = al final) y renumerar `order` de forma consecutiva.
+ */
+export function insertChapterAtIndex(
+  project: Project,
+  index: number,
+  title = ""
+): InsertChapterAtIndexResult {
+  const sorted = [...project.chapters]
+    .sort((a, b) => a.order - b.order)
+    .map((ch, i) => ({ ...ch, order: i }));
+  const idx = Math.max(0, Math.min(index, sorted.length));
+  const bumped = sorted.map((ch, i) =>
+    i >= idx ? { ...ch, order: ch.order + 1 } : ch
+  );
+  const newChapter = createEmptyChapter(idx, title);
+  const chapters = [...bumped, newChapter].sort((a, b) => a.order - b.order);
+  return {
+    project: { ...project, chapters },
+    newChapterId: newChapter.id,
+  };
+}
+
 type LegacyVersion = {
   id: string;
   content: string;

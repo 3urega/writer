@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { WriteSidebarSection } from "./WriteSidebarSection";
 
 export type SidebarSectionId =
+  | "chapters"
   | "lines"
   | "versions"
   | "details"
